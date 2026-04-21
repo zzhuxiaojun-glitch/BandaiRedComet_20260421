@@ -19,3 +19,6 @@ captures/!.gitkeep
 
 # PowerShell transcript
 tools/capture/capture_session.log
+
+# 解包出来的小程序源码 + 大量 JS 乱糟糟，而且二进制重新跑也能生成
+tools/unpack/out/
