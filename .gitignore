@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+config.yaml
+logs/
+captures/*.har
+captures/!.gitkeep
+*.log
+.DS_Store
+
+# 朋友提供的第三方工具与视频（闭源 / 未授权分发）
+万代上号/
+
+# HAR 抓包文件（含敏感信息）
+*.har
+*.sanitized.har
+
+# PowerShell transcript
+tools/capture/capture_session.log

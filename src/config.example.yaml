@@ -1,0 +1,45 @@
+# 万代南宫梦抢购脚本 · 配置示例
+# 复制本文件为 config.yaml 后再填值
+
+# ─── 登录凭证 ────────────────────────────
+ck: "PASTE_YOUR_API_ACCESS_TOKEN_HERE"
+
+# ─── 时间 ────────────────────────────────
+timezone: "Asia/Shanghai"
+# 开抢时刻（精确到毫秒）
+snipe_time: "2026-05-01 10:00:00.000"
+
+# ─── 目标商品 ────────────────────────────
+target:
+  sku_id: "TODO_FILL_FROM_HAR"    # 商品 SKU ID，抓包时从 /api/product/detail 响应里拿
+  spu_id: "TODO_FILL_FROM_HAR"    # 若接口需要
+  quantity: 1
+  address_id: "TODO_FILL_FROM_HAR"  # 预设的默认收货地址 ID
+  # 可选：价格护栏（最终结算价高于此值则放弃，防被动涨价坑）
+  price_ceiling: 9999.00
+
+# ─── 策略 ────────────────────────────────
+strategy:
+  pre_warmup_seconds: 60    # T-60s 开始预热
+  poll_interval_ms: 200     # 预热期轮询间隔
+  max_retries: 10
+  concurrency: 3            # 并发下单请求数
+  retry_backoff_ms: 50
+  # 仅当返回这些业务码时重试（其余立即终止）
+  retryable_codes: ["1001", "1002", "5000"]
+
+# ─── 通知 ────────────────────────────────
+notify:
+  enabled: true
+  provider: "bark"          # bark | server_chan | feishu | none
+  # bark:
+  token: "https://api.day.app/YOUR_KEY"
+  # server_chan:
+  # token: "SCT_XXXXX"
+  # feishu:
+  # token: "https://open.feishu.cn/open-apis/bot/v2/hook/XXXXX"
+
+# ─── 日志 ────────────────────────────────
+log:
+  level: "INFO"
+  dir: "./logs"
