@@ -5,7 +5,9 @@ from typing import Any
 import httpx
 from loguru import logger
 
-BASE_URL = "https://rm-app-api.bandainamcoshanghai.com"
+from .crypto import aes_decrypt, build_signed_request
+
+BASE_URL = "https://crm-app-api.bandainamcoshanghai.com"
 
 
 def _redact(headers: dict) -> dict:
@@ -18,44 +20,69 @@ def _redact(headers: dict) -> dict:
 
 class BandaiClient:
     """所有万代 API 的薄包装。
-    - 自动注入 api-access-token
+    - 每次请求通过 build_signed_request 生成签名 / AES body
+    - 响应体整体是一段 base64 AES 密文，收到后自动解密为 dict
     - HTTP/2 + keep-alive
-    - 每次请求的 ts/url/status/latency/body 都落 jsonl
     """
 
     def __init__(self, ck: str, *, base_url: str = BASE_URL, timeout: float = 5.0):
         self._ck = ck
+        self._time_offset_ms = 0
         self._client = httpx.AsyncClient(
             base_url=base_url,
             http2=True,
             timeout=timeout,
-            headers={
-                "api-access-token": ck,
-                # TODO(抓包后补全): User-Agent / Referer / 其他标配头
-                # "User-Agent": "...",
-                # "Referer": "https://servicewechat.com/wxXXXXX/...",
-            },
             limits=httpx.Limits(max_keepalive_connections=16, max_connections=32),
         )
+
+    def set_time_offset(self, offset_ms: int) -> None:
+        """由 /common/config/get 返回的服务器时间校准。"""
+        self._time_offset_ms = offset_ms
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def request(
+    async def call(
         self,
         method: str,
         path: str,
         *,
-        params: dict | None = None,
-        json_body: Any = None,
-    ) -> httpx.Response:
+        params: Any = None,
+    ) -> dict | list:
+        """执行一次已签名、已加密的请求，返回已解密的响应 dict / list。
+        params 既是 URL query（GET）也是 body payload（POST），由 build_signed_request 决定。
+        """
+        req = build_signed_request(
+            params or {},
+            self._ck,
+            method=method,
+            time_offset_ms=self._time_offset_ms,
+        )
+
+        url = path + req["url_suffix"]
+        headers = req["headers"]
+        body = req["body"]
+
         t0 = time.monotonic()
-        resp = await self._client.request(method, path, params=params, json=json_body)
+        if method.upper() == "GET":
+            resp = await self._client.request(method, url, headers=headers)
+        else:
+            resp = await self._client.request(
+                method, url, headers=headers, content=body.encode("utf-8") if body else b""
+            )
         dt_ms = (time.monotonic() - t0) * 1000
+
+        # 万代响应体是整块 base64 AES 密文。
+        raw_text = resp.text.strip()
+        decoded: dict | list | str
         try:
-            body_preview = resp.text[:500]
+            decoded = aes_decrypt(raw_text) if raw_text else {}
         except Exception:
-            body_preview = "<binary>"
+            try:
+                decoded = resp.json()
+            except Exception:
+                decoded = raw_text[:500]
+
         logger.bind(tag="http").info(
             json.dumps(
                 {
@@ -63,17 +90,18 @@ class BandaiClient:
                     "url": str(resp.request.url),
                     "status": resp.status_code,
                     "latency_ms": round(dt_ms, 1),
+                    "req_params": params,
                     "req_headers": _redact(dict(resp.request.headers)),
-                    "req_body": json_body,
-                    "resp_body": body_preview,
+                    "resp": decoded if isinstance(decoded, (dict, list)) else str(decoded)[:200],
                 },
                 ensure_ascii=False,
             )
         )
-        return resp
+        resp.raise_for_status()
+        return decoded
 
-    async def get(self, path: str, **kw) -> httpx.Response:
-        return await self.request("GET", path, **kw)
+    async def get(self, path: str, params: Any = None) -> dict | list:
+        return await self.call("GET", path, params=params)
 
-    async def post(self, path: str, **kw) -> httpx.Response:
-        return await self.request("POST", path, **kw)
+    async def post(self, path: str, params: Any = None) -> dict | list:
+        return await self.call("POST", path, params=params)

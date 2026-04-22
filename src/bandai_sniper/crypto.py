@@ -39,44 +39,84 @@ def aes_decrypt(ciphertext_b64: str) -> Any:
     return json.loads(unpad(cipher.decrypt(raw), AES.block_size).decode("utf-8"))
 
 
-def _sort_and_coerce(data: Any, keep_nested_objects: bool) -> Any:
+def _coerce_leaves(obj: Any) -> Any:
     """
-    还原 app-service.js 中的 `o(e, r, t)` 函数。
+    递归：Object/Array 结构保持，null 丢弃，其他叶子用 String(v) 规则转字符串。
 
-    - 对象按 key 字典序排序
-    - 如果是数组：
-        * keep_nested_objects=True（加密路径）→ 返回深拷贝的原数组
-        * keep_nested_objects=False（签名路径）→ 包成 {"str": JSON.stringify(arr)}
-    - 最后用 JSON.stringify 的 replacer：
-        * null / undefined → 丢弃
-        * 嵌套对象：keep_nested_objects=True 原样，False 变成 JSON 字符串
-        * 其余 → String(v)
+    对应 JS replacer（其中 t=encryptionEnable=true 恒成立）：
+        r instanceof Object ? t ? r : ... : "" + r
+    所以 Object/Array 保持原样，primitive 转字符串；null/undefined 丢弃。
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        out: dict = {}
+        for k, v in obj.items():
+            coerced = _coerce_leaves(v)
+            if coerced is None:
+                continue
+            out[k] = coerced
+        return out
+    if isinstance(obj, list):
+        result = []
+        for v in obj:
+            coerced = _coerce_leaves(v)
+            if coerced is None:
+                continue
+            result.append(coerced)
+        return result
+    if isinstance(obj, bool):
+        return "true" if obj else "false"
+    return str(obj)
+
+
+def _js_number_default(obj: Any) -> Any:
+    """json.dumps 的 default，把 Python 的整数值 float(142.0) 还原成 int(142)，
+    以匹配 JS `JSON.stringify(142.0) === "142"` 的行为。
+    （float 叶子被 _coerce_leaves 转字符串了不会走到这里；只处理嵌套 raw 数组的情况）"""
+    if isinstance(obj, float) and obj.is_integer():
+        return int(obj)
+    raise TypeError(f"not json-serializable: {type(obj)}")
+
+
+def _js_json_dumps_raw(obj: Any) -> str:
+    """模拟 JS `JSON.stringify(obj)`（无 replacer）：
+    - Python float 142.0 → "142"（JS 数字无 int/float 之分）
+    - 其余按 JSON 标准序列化
+    实现方式：递归把整数值 float 转成 int，再 json.dumps。
+    """
+    def norm(v):
+        if isinstance(v, float) and v.is_integer():
+            return int(v)
+        if isinstance(v, dict):
+            return {k: norm(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [norm(x) for x in v]
+        return v
+    return json.dumps(norm(obj), separators=(",", ":"), ensure_ascii=False)
+
+
+def _sort_and_coerce(data: Any, *, sign_mode: bool) -> Any:
+    """
+    还原 app-service.js 中的 `o(e, r, t)`，t=encryptionEnable=true 恒真。
+
+    JS 语义（关键）：
+      - 顶层如果是 Array：
+          sign (r=false) → u = {str: JSON.stringify(原数组)}  ← 不经过 replacer，数字原样
+          encrypt (r=true) → u = JSON.parse(JSON.stringify(原数组))  ← 然后走 replacer primitive→str
+      - 顶层是 Object：按字典序重建 key；sign / encrypt 行为一致
+      - 然后 `JSON.stringify(u, replacer)` 把所有 primitive 叶子转字符串、null/undefined 丢弃
     """
     if isinstance(data, list):
-        if keep_nested_objects:
-            return json.loads(json.dumps(data))
-        return {"str": json.dumps(data, separators=(",", ":"), ensure_ascii=False)}
+        if sign_mode:
+            # 关键：JSON.stringify(原数组) 不走 replacer，数字不转字符串
+            return {"str": _js_json_dumps_raw(data)}
+        # encrypt 路径：深拷贝后走 replacer 叶子转字符串
+        return _coerce_leaves(data)
 
     if isinstance(data, dict):
-        sorted_items = sorted(data.items(), key=lambda kv: kv[0])
-        result: dict = {}
-        for k, v in sorted_items:
-            if v is None:
-                continue
-            if isinstance(v, (dict, list)):
-                if keep_nested_objects:
-                    result[k] = _sort_and_coerce(v, keep_nested_objects=True)
-                else:
-                    result[k] = json.dumps(
-                        _sort_and_coerce(v, keep_nested_objects=True),
-                        separators=(",", ":"),
-                        ensure_ascii=False,
-                    )
-            elif isinstance(v, bool):
-                result[k] = "true" if v else "false"
-            else:
-                result[k] = str(v)
-        return result
+        sorted_top = {k: data[k] for k in sorted(data.keys())}
+        return _coerce_leaves(sorted_top)
 
     return data
 
@@ -107,14 +147,19 @@ def build_signed_request(
     timestamp = str(int(time.time() * 1000) + time_offset_ms)
     nonce = random.randint(0, 999_999)
 
-    sign_form = _sort_and_coerce(params, keep_nested_objects=False)
-    encrypt_form = _sort_and_coerce(params, keep_nested_objects=True)
+    sign_form = _sort_and_coerce(params, sign_mode=True)
+    encrypt_form = _sort_and_coerce(params, sign_mode=False)
 
     sign_json = json.dumps(sign_form, separators=(",", ":"), ensure_ascii=False)
     encrypt_json = json.dumps(encrypt_form, separators=(",", ":"), ensure_ascii=False)
 
+    # 注意：小程序的 md5 实现是一个老式手搓版本（F86FDFF6...js），
+    # 内部 `(255 & r.charCodeAt(n / 8))` 把 JS 字符串的每个 UTF-16 码点
+    # 只取低 8 位当字节。ASCII 字符无差别，但中文字符会被**截断**到低字节。
+    # 必须复现这个行为：对字符串的每个字符取 ord(c) & 0xFF。
+    combo = f"{user_token}{sign_json}{nonce}{timestamp}{PUBLIC_KEY}"
     signature = hashlib.md5(
-        f"{user_token}{sign_json}{nonce}{timestamp}{PUBLIC_KEY}".encode("utf-8")
+        bytes(ord(c) & 0xFF for c in combo)
     ).hexdigest().lower()
 
     trace_id = f"{uuid.uuid4()}_{timestamp}"

@@ -1,10 +1,6 @@
-"""万代接口封装（骨架）。
+"""万代接口封装。所有路径 + 入参结构已由 2026-04-22 HAR 端到端验证。"""
 
-⚠️ 本文件里所有带 `TODO(抓包)` 标记的地方，都需要在拿到 `bandai_capture.sanitized.har` 之后
-   根据真实请求补完。现在的路径/参数/响应字段都是按常见电商 API 惯例占位的。
-"""
-
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from loguru import logger
@@ -13,121 +9,339 @@ from .client import BandaiClient
 
 
 class ApiError(Exception):
-    def __init__(self, code: str, msg: str, raw: Any = None):
+    def __init__(self, code: Any, msg: str, raw: Any = None):
         self.code = code
         self.msg = msg
         self.raw = raw
         super().__init__(f"[{code}] {msg}")
 
 
-def _check(resp_json: dict) -> dict:
-    """通用业务码处理。
-    TODO(抓包): 根据真实响应调整 success 判定字段与数据字段名。
-    常见形态: {"code":"0","msg":"ok","data":{...}} 或 {"status":200,"result":{...}}
+def _unwrap(resp: dict | list) -> Any:
+    """万代响应统一形态：`{"code":0,"message":"操作成功","data":...}`。
+    code=0 成功，其余抛 ApiError。
     """
-    code = str(resp_json.get("code", resp_json.get("status", "")))
-    if code in ("0", "200", "SUCCESS"):
-        return resp_json.get("data") or resp_json.get("result") or {}
-    raise ApiError(code, resp_json.get("msg") or resp_json.get("message") or "unknown", resp_json)
+    if not isinstance(resp, dict):
+        return resp
+    code = resp.get("code")
+    if code in (0, "0"):
+        return resp.get("data")
+    raise ApiError(code, resp.get("message") or resp.get("msg") or "unknown", resp)
 
 
 @dataclass
 class OrderDraft:
-    """确认订单阶段返回的订单快照。"""
-    confirm_token: str
-    total_price: float
+    """confirmOrder 的完整响应 data。create_order 会把它原样回传。"""
     raw: dict
+    sku_list: list[dict] = field(default_factory=list)
+    order_amount: float = 0.0
+    address: dict = field(default_factory=dict)
 
 
 @dataclass
-class Order:
-    order_no: str
-    pay_params: dict
+class Address:
+    id: int
+    province_id: str
+    province_name: str
+    city_id: str
+    city_name: str
+    district_id: str
+    district_name: str
+    receiver: str
+    receiver_phone: str
+    address: str  # 详细街道
     raw: dict
+
+    @classmethod
+    def from_list_item(cls, item: dict) -> "Address":
+        return cls(
+            id=item["id"],
+            province_id=item["provinceId"],
+            province_name=item["provinceName"],
+            city_id=item["cityId"],
+            city_name=item["cityName"],
+            district_id=item["districtId"],
+            district_name=item["districtName"],
+            receiver=item["receiver"],
+            receiver_phone=item["receiverPhone"],
+            address=item["address"],
+            raw=item,
+        )
+
+
+@dataclass
+class PayParams:
+    """createOrder 响应里的微信 JSAPI 支付参数。
+    注意：后端字段名是 `packagev`（疑似 typo），微信 SDK 实际需要 `package`。
+    小程序前端手动映射了一下，这里也做同样的映射。
+    """
+    prepay_id: str
+    timestamp: str
+    nonce_str: str
+    package: str  # 映射自 packagev
+    sign_type: str
+    pay_sign: str
+    order_id: int
+    raw: dict
+
+    @classmethod
+    def from_resp(cls, data: dict) -> "PayParams":
+        return cls(
+            prepay_id=data["prepayId"],
+            timestamp=str(data["timeStamp"]),
+            nonce_str=data["nonceStr"],
+            package=data.get("package") or data["packagev"],
+            sign_type=data.get("signType", "RSA"),
+            pay_sign=data["paySign"],
+            order_id=int(data.get("id", 0)),
+            raw=data,
+        )
 
 
 class BandaiApi:
     def __init__(self, client: BandaiClient):
         self.c = client
 
-    # ─── 预检 ────────────────────────────────────
-    async def whoami(self) -> dict:
-        """用来验证 CK 是否有效。
-        TODO(抓包): 替换为一个无副作用的接口，如 /api/user/profile。
-        """
-        r = await self.c.get("/api/user/profile")
-        r.raise_for_status()
-        return _check(r.json())
+    # ═══════════════════════════════════════════════════════════════
+    # 基础 / 预检
+    # ═══════════════════════════════════════════════════════════════
 
-    async def get_product(self, sku_id: str) -> dict:
-        """TODO(抓包): 抓详情页时对应的接口。"""
-        r = await self.c.get("/api/product/detail", params={"skuId": sku_id})
-        r.raise_for_status()
-        return _check(r.json())
-
-    # ─── 下单四步 ────────────────────────────────
-    async def add_to_cart(self, sku_id: str, quantity: int) -> dict:
-        """TODO(抓包): 点『加入购物车』对应的接口。
-        有些商品"立即购买"会跳过此步，直接走 prepare_order；根据抓包结果决定是否调用。
+    async def sync_timestamp(self) -> int:
+        """拉服务器 ms 时间戳，同时验证签名。冒烟首选。
+        响应 `data.timestamp` 即毫秒时间。顺便把 server-local 时差灌回 client。
         """
-        r = await self.c.post(
-            "/api/cart/add",
-            json_body={"skuId": sku_id, "quantity": quantity},
+        import time as _time
+        data = _unwrap(await self.c.get("/api/common/config/get", {}))
+        server_ms = int(data["timestamp"])
+        offset = server_ms - int(_time.time() * 1000)
+        self.c.set_time_offset(offset)
+        logger.info(
+            f"server time synced, offset={offset}ms, "
+            f"encryptionEnable={data.get('encryptionEnable')}"
         )
-        r.raise_for_status()
-        return _check(r.json())
+        return server_ms
 
-    async def prepare_order(self, sku_id: str, quantity: int, address_id: str) -> OrderDraft:
-        """TODO(抓包): 『立即购买』或『去结算』 → 进确认订单页。
-        响应里通常带一个一次性 token / tradeNo / checkoutId，用于下一步创建订单。
-        """
-        r = await self.c.post(
-            "/api/order/confirm",
-            json_body={
-                "skuId": sku_id,
-                "quantity": quantity,
-                "addressId": address_id,
+    async def whoami(self) -> list[dict]:
+        """验证 CK 有效 + 拿 memberId。每 item 带 `memberId`。无副作用。"""
+        return _unwrap(await self.c.get(
+            "/api/member/v1/app/personalPermission/getCurrentMemberPermission", {}
+        ))
+
+    async def check_agreement(self) -> list[dict]:
+        """待同意的协议列表（空数组 = 已同意）。"""
+        return _unwrap(await self.c.get("/api/member/v1/app/member/checkAgreementVersion", {}))
+
+    # ═══════════════════════════════════════════════════════════════
+    # 商品浏览
+    # ═══════════════════════════════════════════════════════════════
+
+    async def list_category_by_level(self, level: int = 2) -> list[dict]:
+        return _unwrap(await self.c.get(
+            "/api/commodity/v1/app/category/listByLevel", {"level": str(level)}
+        ))
+
+    async def list_category_by_parent(self, parent_id: int) -> list[dict]:
+        return _unwrap(await self.c.get(
+            "/api/commodity/v1/app/category/listByParentId", {"parentId": str(parent_id)}
+        ))
+
+    async def query_spu(
+        self,
+        *,
+        category_id: int,
+        page_num: int = 1,
+        page_size: int = 12,
+        can_buy: str = "1",
+    ) -> dict:
+        """返回 `{total, list}`。"""
+        return _unwrap(await self.c.post(
+            "/api/commodity/v1/app/spu/query",
+            {
+                "canBuy": can_buy,
+                "categoryId": str(category_id),
+                "pageNum": str(page_num),
+                "pageSize": str(page_size),
             },
-        )
-        r.raise_for_status()
-        data = _check(r.json())
+        ))
+
+    async def query_spu_simple(self, spu_id_list: list[str]) -> list[dict]:
+        return _unwrap(await self.c.post(
+            "/api/commodity/v1/app/spu/simple/query", {"spuIdList": spu_id_list}
+        ))
+
+    async def query_recommendation(self, page_num: int = 1, page_size: int = 20) -> dict:
+        return _unwrap(await self.c.post(
+            "/api/commodity/v1/app/spu/v2/queryRecommendation",
+            {"allowRecommend": "1", "pageNum": str(page_num), "pageSize": str(page_size)},
+        ))
+
+    # ═══════════════════════════════════════════════════════════════
+    # 商品详情（下单前）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def get_spu_detail(self, spu_id: str | int) -> dict:
+        """商品详情。返回 stock / price / presaleType / saleStartTime 等关键字段。"""
+        return _unwrap(await self.c.get(
+            "/api/commodity/v1/app/spu/v2/detail/new", {"id": str(spu_id)}
+        ))
+
+    async def get_sku_list(self, spu_id: str | int) -> list[dict]:
+        """取 SPU 下的 SKU 列表（含 `skuId`、库存、价格）。参数名 `id` 但传的是 spuId。"""
+        return _unwrap(await self.c.get(
+            "/api/commodity/v1/app/spu/sku/detail", {"id": str(spu_id)}
+        ))
+
+    async def get_near_store(self, spu_id: str | int) -> dict:
+        """查询附近门店可售状态。返回 `{"storeCanBuy": bool}`。"""
+        return _unwrap(await self.c.post(
+            "/api/commodity/v1/app/spu/nearStore/get", {"spuId": str(spu_id)}
+        ))
+
+    async def is_collect(self, spu_id: str | int) -> bool:
+        return bool(_unwrap(await self.c.get(
+            "/api/member/v1/app/member/isCollect", {"id": str(spu_id)}
+        )))
+
+    # ═══════════════════════════════════════════════════════════════
+    # 地址
+    # ═══════════════════════════════════════════════════════════════
+
+    async def get_default_address(self) -> dict | None:
+        """默认地址。可能为空（新用户）。"""
+        return _unwrap(await self.c.get(
+            "/api/order/v1/app/address/getDefaultOrderAddress", {}
+        ))
+
+    async def list_addresses(self, page_num: int = 1, page_size: int = 20) -> list[Address]:
+        data = _unwrap(await self.c.post(
+            "/api/order/v1/app/address/getOrderAddressList",
+            {"pageNum": str(page_num), "pageSize": str(page_size)},
+        ))
+        return [Address.from_list_item(it) for it in (data or {}).get("list", [])]
+
+    # ═══════════════════════════════════════════════════════════════
+    # 优惠券
+    # ═══════════════════════════════════════════════════════════════
+
+    async def query_available_coupons(self, sku_list: list[dict]) -> dict:
+        """sku_list 元素 `{skuId, num}`。返回 `{firstList, secondList}`。"""
+        return _unwrap(await self.c.post(
+            "/api/marketing/v1/app/couponrecord/queryAppOrderCouponMemberList",
+            {"skuList": sku_list},
+        ))
+
+    # ═══════════════════════════════════════════════════════════════
+    # 下单四步（HAR 完全验证）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def confirm_order(
+        self,
+        sku_list: list[dict],
+        *,
+        address: Address | None = None,
+    ) -> OrderDraft:
+        """确认订单（算价 / 确认库存，不占库存）。
+        - 不带地址：只算 goodsPrice，运费=0
+        - 带地址：返回含 freight 的完整 orderAmount
+        实战流程：先不带地址调一次确认库存，再带地址调一次算运费。
+        """
+        payload: dict = {
+            "latitude": "undefined",
+            "longitude": "undefined",
+            "skuList": sku_list,
+        }
+        if address is not None:
+            payload.update({
+                "provinceId": address.province_id,
+                "provinceName": address.province_name,
+                "cityId": address.city_id,
+                "cityName": address.city_name,
+                "districtId": address.district_id,
+                "districtName": address.district_name,
+                "receiver": address.receiver,
+                "receiverPhone": address.receiver_phone,
+                "receiverAddress": address.address,
+            })
+        data = _unwrap(await self.c.post(
+            "/api/order/v1/app/order/confirmOrder", payload,
+        ))
         return OrderDraft(
-            confirm_token=data.get("confirmToken") or data.get("checkoutId") or "",
-            total_price=float(data.get("totalPrice", 0)),
             raw=data,
+            sku_list=data.get("skuList", []),
+            order_amount=float(data.get("orderAmount", 0)),
+            address=address.raw if address else {},
         )
 
-    async def create_order(self, draft: OrderDraft, sku_id: str, quantity: int, address_id: str) -> Order:
-        """TODO(抓包): 『提交订单』 → 真正占库存。
-        响应里通常带 order_no + 微信支付参数 (prepayId / timeStamp / nonceStr / paySign)。
+    async def create_order(
+        self,
+        draft: OrderDraft,
+        address: Address,
+        *,
+        use_point: int = 0,
+    ) -> PayParams:
+        """真正创建订单（占库存），返回微信 JSAPI 支付参数。
+        payload = confirmOrder 响应 data 字符串化回传 + 地址 + usePoint。
         """
-        r = await self.c.post(
-            "/api/order/create",
-            json_body={
-                "confirmToken": draft.confirm_token,
-                "skuId": sku_id,
-                "quantity": quantity,
-                "addressId": address_id,
-            },
-        )
-        r.raise_for_status()
-        data = _check(r.json())
-        return Order(
-            order_no=data.get("orderNo") or data.get("orderId") or "",
-            pay_params=data.get("payParams") or data.get("paySign") or {},
-            raw=data,
-        )
+        # confirmOrder 返回的字段 → createOrder 入参（全部转字符串）
+        d = draft.raw
+        payload: dict = {
+            "latitude": "undefined",
+            "longitude": "undefined",
+            "couponDiscountAmount": _js_str(d.get("couponDiscountAmount", 0)),
+            "skuList": [_stringify_sku(s) for s in d.get("skuList", [])],
+            "orderType": _js_str(d.get("orderType", "")),
+            "orderAmount": _js_str(d.get("orderAmount", "")),
+            "freight": _js_str(d.get("freight", 0)),
+            "freightBeforeDiscount": _js_str(d.get("freightBeforeDiscount", 0)),
+            "goodsOriginalPrice": _js_str(d.get("goodsOriginalPrice", "")),
+            "goodsPrice": _js_str(d.get("goodsPrice", "")),
+            "goodsPayAmount": _js_str(d.get("goodsPayAmount", "")),
+            "orderPoint": _js_str(d.get("orderPoint", 0)),
+            "depositAmount": _js_str(d.get("depositAmount", 0)),
+            "balanceAmount": _js_str(d.get("balanceAmount", 0)),
+            "usePoint": _js_str(use_point),
+            # 地址
+            "provinceId": address.province_id,
+            "provinceName": address.province_name,
+            "cityId": address.city_id,
+            "cityName": address.city_name,
+            "districtId": address.district_id,
+            "districtName": address.district_name,
+            "receiver": address.receiver,
+            "receiverPhone": address.receiver_phone,
+            "receiverAddress": address.address,
+        }
+        data = _unwrap(await self.c.post(
+            "/api/order/v1/app/order/createOrder", payload,
+        ))
+        return PayParams.from_resp(data)
 
-    # ─── 可选：预热用 ────────────────────────────
-    async def stock_of(self, sku_id: str) -> int | None:
-        """若有独立的库存查询接口，可在 T-2s 高频轮询。
-        TODO(抓包): 观察商品详情页秒刷新时是否有单独的 stock 接口。
-        """
-        try:
-            r = await self.c.get("/api/product/stock", params={"skuId": sku_id})
-            r.raise_for_status()
-            data = _check(r.json())
-            return int(data.get("stock", 0))
-        except Exception as e:
-            logger.debug(f"stock_of failed (非致命): {e}")
-            return None
+    async def get_order_detail(self, order_id: str | int) -> dict:
+        """根据订单 id（不是 orderNo）查详情。用于抢购后确认订单状态。"""
+        return _unwrap(await self.c.post(
+            "/api/order/v1/app/order/getOrderDetail", {"id": str(order_id)}
+        ))
+
+
+def _js_str(v: Any) -> str:
+    """JS `String(v)` 等价：142.0 → "142"（不是 Python 的 "142.0"），20.5 → "20.5"。
+    createOrder 的入参全部是字符串，且数字不带无谓的 .0 —— 签名必须匹配。
+    """
+    if isinstance(v, str):
+        return v
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, float):
+        if v.is_integer():
+            return str(int(v))
+        return repr(v)  # "20.5" 样式，不是科学计数
+    return str(v)
+
+
+def _stringify_sku(sku: dict) -> dict:
+    """把 confirmOrder 响应里的 sku item 转成 createOrder 入参格式（全 JS 字符串）。"""
+    fields = [
+        "spuId", "skuId", "num", "goodsOriginalPrice", "goodsPrice",
+        "payAmount", "point", "totalPoint", "spuType", "skuWeight",
+        "skuMediaUrl", "spuName", "skuName", "freeFreight", "purchaseLimitLevel",
+    ]
+    return {k: _js_str(sku[k]) for k in fields if k in sku}
