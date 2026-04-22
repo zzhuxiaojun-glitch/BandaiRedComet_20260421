@@ -24,6 +24,16 @@ class Strategy(BaseModel):
     # 避免在真抢购时因单次误判把 max_retries 烧完。实战抓到 "未开抢" 的真实 code 再填。
     retryable_codes: List[str] = Field(default_factory=list)
 
+    # ── 预热期库存轮询（瞬爆款优化）──
+    # 启用后，预热期每 poll_stock_interval_ms 打一次 spu/detail，
+    # 发现 stock 跳变 / saleStatus 变 0 / sellOutFlag 变 false 时，
+    # 只要 now >= snipe_time - max_early_fire_ms 就提前 fire（不等官方准点）。
+    poll_stock: bool = True
+    poll_stock_interval_ms: int = 150
+    # 最早能比 snipe_time 提前多少 ms fire。太早服务端可能还没开 —— 设成服务器
+    # 提前量的保守估计；0 表示必须等到 snipe_time 才 fire（只用轮询避免 busy-wait）
+    max_early_fire_ms: int = 2000
+
 
 class Notify(BaseModel):
     enabled: bool = False

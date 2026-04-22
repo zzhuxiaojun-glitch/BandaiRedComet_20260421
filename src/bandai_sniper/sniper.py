@@ -87,8 +87,89 @@ class Sniper:
         logger.info("预热：刷新服务器时间 + keep-alive")
         await self.api.sync_timestamp()
 
-        # 精确等到开抢时刻（提前 lead_ms 毫秒醒来）
-        await wait_until(target_ts, offset=ntp_offset, lead_ms=strat.lead_ms)
+        # 可选：预热期库存轮询（瞬爆款优化）—— 发现开售信号就提前 fire
+        if strat.poll_stock and strat.max_early_fire_ms > 0:
+            earliest_fire_ts = target_ts - strat.max_early_fire_ms / 1000
+            trigger = asyncio.Event()
+            poll_task = asyncio.create_task(self._poll_stock(trigger, earliest_fire_ts))
+            deadline_task = asyncio.create_task(
+                wait_until(target_ts, offset=ntp_offset, lead_ms=strat.lead_ms)
+            )
+            trigger_task = asyncio.create_task(trigger.wait())
+            try:
+                done, pending = await asyncio.wait(
+                    {deadline_task, trigger_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+                if trigger_task in done:
+                    logger.success("🔥 stock 轮询触发，提前 fire")
+                else:
+                    logger.info("准点触发 fire（轮询未见信号）")
+            finally:
+                poll_task.cancel()
+                try:
+                    await poll_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        else:
+            # 纯准点触发（无轮询）
+            await wait_until(target_ts, offset=ntp_offset, lead_ms=strat.lead_ms)
+
+    async def _poll_stock(self, trigger: asyncio.Event, earliest_fire_ts: float) -> None:
+        """预热期每 N ms 拉一次商品详情，看到 stock 跳变 / saleStatus 变 0 /
+        sellOutFlag 变 false 时 set trigger（但必须 now >= earliest_fire_ts 才算有效）。
+        """
+        spu_id = self.cfg.target.spu_id
+        interval = self.cfg.strategy.poll_stock_interval_ms / 1000
+
+        try:
+            base = await self.api.get_spu_detail(spu_id)
+        except Exception as e:
+            logger.warning(f"poll baseline 失败，跳过轮询: {e}")
+            return
+        base_stock = base.get("stock", 0) or 0
+        base_status = base.get("saleStatus")
+        base_sellout = base.get("sellOutFlag")
+        logger.info(
+            f"poll baseline: stock={base_stock} saleStatus={base_status} "
+            f"sellOut={base_sellout}"
+        )
+
+        polls = 0
+        while not trigger.is_set():
+            await asyncio.sleep(interval)
+            polls += 1
+            try:
+                cur = await self.api.get_spu_detail(spu_id)
+            except Exception as e:
+                logger.debug(f"poll #{polls} 异常（非致命）: {e}")
+                continue
+
+            cur_stock = cur.get("stock", 0) or 0
+            cur_status = cur.get("saleStatus")
+            cur_sellout = cur.get("sellOutFlag")
+
+            reasons = []
+            if cur_stock > base_stock:
+                reasons.append(f"stock {base_stock}→{cur_stock}")
+            if cur_status == 0 and base_status != 0:
+                reasons.append(f"saleStatus {base_status}→0")
+            if cur_sellout is False and base_sellout:
+                reasons.append("sellOutFlag→false")
+
+            if reasons:
+                if time.time() >= earliest_fire_ts:
+                    logger.success(
+                        f"🔥 poll #{polls} 检测到开售信号: {', '.join(reasons)}，提前 fire"
+                    )
+                    trigger.set()
+                    return
+                logger.info(
+                    f"poll #{polls} 看到开售信号 {reasons} 但未到最早 fire 时刻，继续等"
+                )
+                # 继续轮询但不改 baseline，避免后续跳变检测丢失
 
     # ─── 阶段 3：开火 ───────────────────────────
     async def _attempt(self, idx: int) -> PayParams:
