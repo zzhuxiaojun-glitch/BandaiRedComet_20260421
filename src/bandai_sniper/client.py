@@ -9,6 +9,16 @@ from .crypto import aes_decrypt, build_signed_request
 
 BASE_URL = "https://crm-app-api.bandainamcoshanghai.com"
 
+# 默认伪装成 微信 PC 端小程序（万代服务端对缺失 UA / Referer 的请求会返回 432）
+DEFAULT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 "
+    "MicroMessenger/7.0.20.1781(0x6700143B) NetType/WIFI "
+    "MiniProgramEnv/Windows WindowsWechat/WMPF WindowsWechat(0x63090a13) "
+    "UnifiedPCWindowsWechat(0xf254173b) XWEB/19027"
+)
+DEFAULT_REFERER = "https://servicewechat.com/wx1cb4557915b2b7cd/129/page-frame.html"
+
 
 def _redact(headers: dict) -> dict:
     out = dict(headers)
@@ -25,7 +35,15 @@ class BandaiClient:
     - HTTP/2 + keep-alive
     """
 
-    def __init__(self, ck: str, *, base_url: str = BASE_URL, timeout: float = 5.0):
+    def __init__(
+        self,
+        ck: str,
+        *,
+        base_url: str = BASE_URL,
+        timeout: float = 5.0,
+        user_agent: str = DEFAULT_UA,
+        referer: str = DEFAULT_REFERER,
+    ):
         self._ck = ck
         self._time_offset_ms = 0
         self._client = httpx.AsyncClient(
@@ -33,6 +51,13 @@ class BandaiClient:
             http2=True,
             timeout=timeout,
             limits=httpx.Limits(max_keepalive_connections=16, max_connections=32),
+            headers={
+                "User-Agent": user_agent,
+                "Referer": referer,
+                "xweb_xhr": "1",
+                "Accept": "*/*",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            },
         )
 
     def set_time_offset(self, offset_ms: int) -> None:

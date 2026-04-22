@@ -61,11 +61,15 @@ def run(ctx):
 def check(ctx):
     cfg = _load(ctx)
     sniper = Sniper(cfg)
-    try:
-        asyncio.run(sniper.precheck())
-        logger.success("预检通过，可以等时间")
-    finally:
-        asyncio.run(sniper.aclose())
+
+    async def _do():
+        try:
+            await sniper.precheck()
+            logger.success("预检通过，可以等时间")
+        finally:
+            await sniper.aclose()
+
+    asyncio.run(_do())
 
 
 @cli.command("ntp", help="测一下本机与 NTP 的时间偏差")

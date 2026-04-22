@@ -1,0 +1,50 @@
+# 万代抢购脚本配置样例。把文件另存为 `config.yaml` 后按实际填写。
+# ⚠️ 含 CK 的真实 config.yaml 已在 .gitignore 里，不会被 commit。
+
+# 从抓 Token 工具 / HAR 拿到的 api-access-token（175 字符左右的 JWT）
+ck: "eyJ0eXAiOiJKV1QiLCJhbGciOi...填完整..."
+
+# 抢购开始时间（本地时区）。支持秒级。
+snipe_time: "2026-04-30 16:00:00"
+timezone: "Asia/Shanghai"
+
+target:
+  # 商品 SPU id。从小程序商品详情页 URL 或 HAR 里拿 —— spu/v2/detail/new?id=XXXX
+  spu_id: "6521"
+  # SKU id。商品只有一个规格时可从 spu/sku/detail 响应里取；多规格时对应要买的那个
+  sku_id: "9266"
+  # 数量
+  num: 1
+  # 收货地址 id（从 address/getOrderAddressList 响应的 list[].id）
+  # 不填则自动用地址列表第一条
+  address_id: "695133"
+  # 价格护栏：confirmOrder 算出的 orderAmount 超过此值直接弃单（防钓鱼/价格异常）
+  price_ceiling: 500.0
+
+strategy:
+  # 提前多少秒进入"预热"（重对时、建 keep-alive）。60 秒够用
+  pre_warmup_seconds: 60
+  # 比开抢时刻提前醒来几毫秒（抵消 TTFB 和 asyncio 调度延迟）
+  lead_ms: 5
+  # 单 worker 最多重试几次
+  max_retries: 8
+  # 并发 worker 数。3 个一般够，再多容易触发风控
+  concurrency: 3
+  # 每次失败后 sleep 多少 ms 再试
+  retry_backoff_ms: 50
+  # 可重试的业务码。默认空：只有网络错误重试，业务错误（如库存不足）立即 fail。
+  # 实战抓到 "未开抢 / 限流" 的真实 code 再补进来，例：["30001"]
+  retryable_codes: []
+
+notify:
+  enabled: true
+  # bark / server_chan / feishu / none
+  provider: "server_chan"
+  # server_chan：SCTKEY，不带 https 前缀
+  # feishu：webhook 完整 URL
+  # bark：https://api.day.app/XXXX
+  token: "SCTxxxxxxxxx"
+
+log:
+  level: "INFO"  # DEBUG/INFO/WARNING/ERROR
+  dir: "./logs"

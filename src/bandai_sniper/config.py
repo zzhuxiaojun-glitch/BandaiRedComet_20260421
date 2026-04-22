@@ -7,19 +7,21 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Target(BaseModel):
-    sku_id: str
-    spu_id: Optional[str] = None
-    quantity: int = 1
-    address_id: str
-    price_ceiling: float = 9999.0
+    spu_id: str  # 商品 SPU（必填，查库存 / 构造 skuList）
+    sku_id: str  # 具体规格 SKU（有多规格时必须选一个）
+    num: int = 1  # 购买数量
+    address_id: Optional[str] = None  # 不填则用地址列表第一条
+    price_ceiling: float = 99999.0  # confirmOrder 返回 orderAmount 超过此值则弃单
 
 
 class Strategy(BaseModel):
-    pre_warmup_seconds: int = 60
-    poll_interval_ms: int = 200
-    max_retries: int = 10
-    concurrency: int = 3
-    retry_backoff_ms: int = 50
+    pre_warmup_seconds: int = 60  # 提前 N 秒预热（重对时、建 keep-alive）
+    lead_ms: int = 5  # 比开抢时刻提前 N 毫秒醒来抵消 TTFB
+    max_retries: int = 10  # 单 worker 失败后重试次数
+    concurrency: int = 3  # 并发 worker 数
+    retry_backoff_ms: int = 50  # 每次失败后 sleep 多少 ms 再重试
+    # 默认空：只有网络/超时异常会重试，业务错误（如库存不足 / 限购）立即 fail，
+    # 避免在真抢购时因单次误判把 max_retries 烧完。实战抓到 "未开抢" 的真实 code 再填。
     retryable_codes: List[str] = Field(default_factory=list)
 
 
@@ -39,15 +41,15 @@ class Config(BaseModel):
     timezone: str = "Asia/Shanghai"
     snipe_time: datetime
     target: Target
-    strategy: Strategy
-    notify: Notify
+    strategy: Strategy = Field(default_factory=Strategy)
+    notify: Notify = Field(default_factory=Notify)
     log: LogConfig = Field(default_factory=LogConfig)
 
     @field_validator("ck")
     @classmethod
     def _ck_not_placeholder(cls, v: str) -> str:
-        if v.startswith("PASTE_") or v.startswith("TODO"):
-            raise ValueError("ck 未填写，请粘贴从抓 Token 工具复制的 api-access-token")
+        if v.startswith("PASTE_") or v.startswith("TODO") or v.startswith("${"):
+            raise ValueError("ck 未填写，粘贴从抓 Token 工具或 HAR 拿到的 api-access-token")
         return v
 
 
