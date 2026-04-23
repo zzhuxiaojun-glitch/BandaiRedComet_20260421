@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>万代抢购器</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <span class="brand-badge"></span>
+    <h1>万代抢购器</h1>
+    <span class="version">v0.1</span>
+  </header>
+
+  <!-- ═══════ 视图 1：表单 ═══════ -->
+  <section id="view-form" class="view active">
+
+    <!-- 账号卡片 -->
+    <div class="card">
+      <h2>① 账号</h2>
+      <label class="field">
+        <span class="label-row">
+          <span>CK（api-access-token）</span>
+          <label class="inline-check">
+            <input type="checkbox" id="remember_ck"> 记住 CK
+          </label>
+        </span>
+        <textarea id="ck" rows="3" placeholder="粘贴 175 字符左右的 JWT..."></textarea>
+      </label>
+      <div class="hint">
+        会话凭证，通过微信小程序登录后抓包获得。
+        <a href="#" onclick="showHelp('ck'); return false;">如何获取？</a>
+      </div>
+    </div>
+
+    <!-- 商品卡片 -->
+    <div class="card">
+      <h2>② 商品</h2>
+      <label class="field">
+        <span>商品链接或 SPU ID</span>
+        <div class="row">
+          <input type="text" id="spu_id" placeholder="6521 或商品 URL">
+          <button class="btn-secondary" onclick="parseSpuUrl()">解析</button>
+        </div>
+      </label>
+
+      <div id="product-preview" class="product-preview hidden">
+        <div class="product-name-cn" id="product-name-cn"></div>
+        <div class="product-name-jp" id="product-name-jp"></div>
+        <div class="product-meta">
+          <span id="product-price"></span>
+          <span id="product-stock"></span>
+          <span id="product-status"></span>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>SKU（规格）</span>
+        <div class="row">
+          <select id="sku_id"></select>
+          <button class="btn-secondary" onclick="fetchSkus()">刷新</button>
+        </div>
+      </label>
+
+      <label class="field inline">
+        <span>数量</span>
+        <input type="number" id="num" value="1" min="1" max="10" style="width: 80px">
+      </label>
+    </div>
+
+    <!-- 收货卡片 -->
+    <div class="card">
+      <h2>③ 收货</h2>
+      <label class="field">
+        <span>地址</span>
+        <select id="address_id">
+          <option value="">（先预检后自动加载）</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- 时间卡片 -->
+    <div class="card">
+      <h2>④ 开抢时间</h2>
+      <label class="field">
+        <input type="datetime-local" id="snipe_time" step="1">
+      </label>
+      <div class="hint">本地时区：<span id="tz-hint">Asia/Shanghai</span></div>
+    </div>
+
+    <!-- 高级选项（可折叠） -->
+    <details class="card collapsible">
+      <summary>⑤ 高级策略（默认够用）</summary>
+      <div class="grid-2">
+        <label class="field">
+          <span>并发 workers</span>
+          <input type="number" id="concurrency" value="3" min="1" max="10">
+        </label>
+        <label class="field">
+          <span>单 worker 重试</span>
+          <input type="number" id="max_retries" value="8" min="0" max="50">
+        </label>
+        <label class="field">
+          <span>提前对时（秒）</span>
+          <input type="number" id="pre_warmup_seconds" value="60" min="10" max="300">
+        </label>
+        <label class="field">
+          <span>最早提前 fire（ms）</span>
+          <input type="number" id="max_early_fire_ms" value="2000" min="0" max="10000">
+        </label>
+        <label class="field">
+          <span>价格护栏（¥）</span>
+          <input type="number" id="price_ceiling" value="99999" min="0">
+        </label>
+        <label class="field inline">
+          <input type="checkbox" id="poll_stock" checked>
+          <span>库存轮询（瞬爆款优化）</span>
+        </label>
+      </div>
+    </details>
+
+    <!-- 通知（可折叠） -->
+    <details class="card collapsible">
+      <summary>⑥ 推送通知（可选）</summary>
+      <label class="field inline">
+        <input type="checkbox" id="notify_enabled">
+        <span>启用通知</span>
+      </label>
+      <label class="field">
+        <span>通道</span>
+        <select id="notify_provider">
+          <option value="none">无</option>
+          <option value="server_chan">Server 酱</option>
+          <option value="bark">Bark (iOS)</option>
+          <option value="feishu">飞书机器人</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Token / Webhook</span>
+        <div class="row">
+          <input type="text" id="notify_token" placeholder="SCTxxx / URL / ...">
+          <button class="btn-secondary" onclick="testNotify()">试发</button>
+        </div>
+      </label>
+    </details>
+
+    <!-- 操作按钮 -->
+    <div class="actions">
+      <button class="btn-secondary" onclick="runPrecheck()">先预检</button>
+      <button class="btn-primary" onclick="startSnipe()">
+        <span class="btn-icon">🔥</span>
+        开始抢购
+      </button>
+    </div>
+
+    <div id="form-feedback" class="feedback hidden"></div>
+  </section>
+
+  <!-- ═══════ 视图 2：抢购中 ═══════ -->
+  <section id="view-running" class="view">
+    <div class="card running-card">
+      <div class="phase-label" id="phase-label">等待</div>
+      <div class="countdown" id="countdown">T-00:00:00</div>
+      <div class="progress"><div id="progress-bar"></div></div>
+
+      <div class="product-brief" id="running-product"></div>
+
+      <div class="log-box">
+        <h3>实时日志</h3>
+        <div id="log-stream"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-secondary" onclick="stopSnipe()">中止</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ 视图 3：抢中成功 ═══════ -->
+  <section id="view-success" class="view">
+    <div class="card success-card">
+      <div class="success-badge">🎉</div>
+      <h2 class="success-title">抢 到 了</h2>
+
+      <div class="pay-info">
+        <div class="field">
+          <span>订单 ID</span>
+          <div class="copy-row">
+            <code id="order-id">---</code>
+            <button class="btn-mini" onclick="copyText('order-id')">复制</button>
+          </div>
+        </div>
+        <div class="field">
+          <span>prepay_id</span>
+          <div class="copy-row">
+            <code id="prepay-id" class="small-mono">---</code>
+            <button class="btn-mini" onclick="copyText('prepay-id')">复制</button>
+          </div>
+        </div>
+        <div class="pay-reminder">
+          ⚠️ 15 分钟内去微信小程序「我的订单」付款，否则订单自动取消
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" onclick="openWechat()">打开微信</button>
+        <button class="btn-secondary" onclick="backToForm()">再抢一个</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════ 视图 4：抢购失败 ═══════ -->
+  <section id="view-failed" class="view">
+    <div class="card failed-card">
+      <div class="failed-badge">✖</div>
+      <h2 class="failed-title">抢购失败</h2>
+      <div id="error-msg" class="error-msg"></div>
+
+      <div class="log-box">
+        <h3>最后日志</h3>
+        <div id="failed-logs"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" onclick="backToForm()">返回</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

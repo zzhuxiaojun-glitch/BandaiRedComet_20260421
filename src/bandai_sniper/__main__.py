@@ -78,5 +78,22 @@ def ntp_cmd():
     click.echo(f"本机时间偏差: {offset*1000:.1f}ms")
 
 
+@cli.command("gui", help="启动图形窗口（PyWebView）")
+@click.option("--debug", is_flag=True, help="开启 WebView 调试（显示控制台）")
+def gui_cmd(debug):
+    # GUI 自己管日志（见 ui/session.py 的 sink），最小初始化 logger 以免双重输出
+    logger.remove()
+    logger.add(sys.stderr, level="DEBUG" if debug else "INFO",
+               format="<green>{time:HH:mm:ss.SSS}</green> <level>{level:<7}</level> {message}")
+    Path("./logs").mkdir(parents=True, exist_ok=True)
+    logger.add("./logs/gui_{time:YYYYMMDD_HHmmss}.log",
+               level="DEBUG", rotation="50 MB", retention="30 days", encoding="utf-8")
+
+    if debug:
+        sys.argv.append("--debug")
+    from .ui.gui import launch
+    launch()
+
+
 if __name__ == "__main__":
     cli(obj={})

@@ -1,0 +1,519 @@
+/* ═══════════════════════════════════════════
+   万代抢购器 · 配色（阿姆罗高达 + 夏亚扎古）
+   ═══════════════════════════════════════════ */
+:root {
+  --sazabi-red: #C8122C;    /* 主色 · 夏亚红 */
+  --char-pink: #E86A8C;     /* 辅色 · 夏亚粉，用于次级强调/错误 */
+  --dark-crimson: #7A0A1C;  /* 暗红，按下态/边框 */
+  --gundam-white: #F4F4F0;  /* 高达白，卡片底 */
+  --gundam-blue: #113D6E;   /* 高达蓝，次要按钮 */
+  --gundam-yellow: #F7D200; /* 高达黄，成功状态/胜利 */
+  --gundam-red: #D03329;    /* 高达红，点缀 */
+  --ink: #1A1D2B;           /* 主文字 */
+  --ash: #8A8D9B;           /* 次要文字 */
+  --paper: #FAFAF7;         /* 页面底色 */
+  --line: #E0DED6;          /* 分割线 */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "Noto Sans SC",
+               "PingFang SC", "Hiragino Sans GB", sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+code, .mono, .countdown {
+  font-family: "JetBrains Mono", Consolas, "SF Mono", monospace;
+}
+
+/* ═══ Header ═══ */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--ink);
+  color: var(--gundam-white);
+  border-bottom: 3px solid var(--sazabi-red);
+}
+
+.brand-badge {
+  width: 28px;
+  height: 28px;
+  background: var(--sazabi-red);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  box-shadow: inset -2px -2px 0 var(--dark-crimson);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.version {
+  font-size: 11px;
+  color: var(--ash);
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+
+/* ═══ Views ═══ */
+.view {
+  display: none;
+  padding: 16px;
+  animation: fadeIn 0.25s ease;
+}
+
+.view.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ═══ Cards ═══ */
+.card {
+  background: var(--gundam-white);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.card h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gundam-blue);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--line);
+}
+
+.card.collapsible > summary {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gundam-blue);
+  cursor: pointer;
+  outline: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--line);
+}
+
+.card.collapsible > summary::before {
+  content: "▶";
+  margin-right: 6px;
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.card.collapsible[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.card.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ═══ Fields ═══ */
+.field {
+  display: block;
+  margin-top: 10px;
+}
+
+.field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--ink);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.field.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field.inline > span {
+  margin-bottom: 0;
+}
+
+.label-row {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.inline-check {
+  font-size: 11px;
+  color: var(--ash);
+  font-weight: normal !important;
+  cursor: pointer;
+  margin: 0 !important;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="datetime-local"],
+textarea,
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--ink);
+  transition: border-color 0.15s;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--sazabi-red);
+  box-shadow: 0 0 0 3px rgba(200, 18, 44, 0.12);
+}
+
+textarea {
+  resize: vertical;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row > input {
+  flex: 1;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--ash);
+  margin-top: 4px;
+}
+
+.hint a {
+  color: var(--gundam-blue);
+}
+
+/* ═══ Product preview ═══ */
+.product-preview {
+  padding: 10px;
+  background: rgba(247, 210, 0, 0.08);
+  border: 1px solid var(--gundam-yellow);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.product-preview.hidden {
+  display: none;
+}
+
+.product-name-cn {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.product-name-jp {
+  font-size: 11px;
+  color: var(--ash);
+  font-family: "Noto Sans JP", Meiryo, "Yu Gothic", sans-serif;
+  margin-top: 2px;
+}
+
+.product-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.product-meta > span {
+  padding: 2px 8px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+/* ═══ Buttons ═══ */
+button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 16px;
+  transition: all 0.15s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--sazabi-red);
+  color: #fff;
+  padding: 12px 24px;
+  font-size: 15px;
+  box-shadow: 0 2px 6px rgba(200, 18, 44, 0.35);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--dark-crimson);
+  box-shadow: 0 3px 10px rgba(122, 10, 28, 0.4);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-icon {
+  margin-right: 6px;
+}
+
+.btn-secondary {
+  background: var(--gundam-white);
+  color: var(--gundam-blue);
+  border: 1px solid var(--gundam-blue);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--gundam-blue);
+  color: #fff;
+}
+
+.btn-mini {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--gundam-blue);
+  color: #fff;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+/* ═══ Feedback ═══ */
+.feedback {
+  padding: 10px 14px;
+  border-radius: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.feedback.hidden {
+  display: none;
+}
+
+.feedback.success {
+  background: rgba(247, 210, 0, 0.15);
+  border: 1px solid var(--gundam-yellow);
+  color: var(--ink);
+}
+
+.feedback.error {
+  background: rgba(232, 106, 140, 0.12);
+  border: 1px solid var(--char-pink);
+  color: var(--dark-crimson);
+}
+
+.feedback.info {
+  background: rgba(17, 61, 110, 0.08);
+  border: 1px solid var(--gundam-blue);
+  color: var(--gundam-blue);
+}
+
+/* ═══ 抢购中 ═══ */
+.running-card {
+  text-align: center;
+  padding: 24px;
+}
+
+.phase-label {
+  font-size: 14px;
+  color: var(--ash);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.countdown {
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--sazabi-red);
+  margin: 8px 0 16px;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+#progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--sazabi-red), var(--char-pink));
+  transition: width 0.3s;
+}
+
+.product-brief {
+  font-size: 13px;
+  color: var(--ink);
+  padding: 10px;
+  background: rgba(247, 210, 0, 0.08);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+/* ═══ Log Box ═══ */
+.log-box {
+  text-align: left;
+  margin-top: 16px;
+}
+
+.log-box h3 {
+  font-size: 12px;
+  color: var(--ash);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+#log-stream, #failed-logs {
+  background: var(--ink);
+  color: var(--gundam-white);
+  padding: 10px;
+  border-radius: 6px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+#log-stream .log-SUCCESS { color: var(--gundam-yellow); }
+#log-stream .log-ERROR   { color: var(--char-pink); }
+#log-stream .log-WARNING { color: var(--gundam-yellow); opacity: 0.8; }
+#log-stream .log-DEBUG   { color: var(--ash); }
+
+/* ═══ Success ═══ */
+.success-card {
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.success-badge {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
+.success-title {
+  color: var(--gundam-yellow);
+  text-shadow: 0 2px 0 var(--dark-crimson);
+  font-size: 36px;
+  letter-spacing: 6px;
+  margin-bottom: 20px;
+}
+
+.pay-info {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-row code {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--ink);
+  color: var(--gundam-white);
+  border-radius: 4px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.small-mono {
+  font-size: 10px !important;
+}
+
+.pay-reminder {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(232, 106, 140, 0.12);
+  border: 1px solid var(--char-pink);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--dark-crimson);
+}
+
+/* ═══ Failed ═══ */
+.failed-card {
+  text-align: center;
+  padding: 24px;
+}
+
+.failed-badge {
+  font-size: 40px;
+  color: var(--char-pink);
+  margin-bottom: 6px;
+}
+
+.failed-title {
+  color: var(--char-pink);
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.error-msg {
+  background: rgba(232, 106, 140, 0.08);
+  border: 1px solid var(--char-pink);
+  color: var(--dark-crimson);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  text-align: left;
+  margin-bottom: 12px;
+}
