@@ -199,10 +199,19 @@ textarea {
 .row {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 
-.row > input {
-  flex: 1;
+.row > input,
+.row > select {
+  flex: 1 1 auto;
+  min-width: 0;   /* 防止被内容撑破 flex */
+  width: auto;    /* 覆盖全局 width: 100% */
+}
+
+.row > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .grid-2 {
