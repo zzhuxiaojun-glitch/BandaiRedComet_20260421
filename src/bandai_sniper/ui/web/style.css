@@ -515,6 +515,87 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+/* 诊断卡片：错误分类展示 */
+.error-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  text-align: left;
+  background: rgba(232, 106, 140, 0.08);
+  border: 1px solid var(--char-pink);
+  border-left: 4px solid var(--sazabi-red);
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+/* 根据 severity 切换左条颜色 */
+.error-card.sev-warning { border-left-color: var(--gundam-yellow); background: rgba(247, 210, 0, 0.08); }
+.error-card.sev-info    { border-left-color: var(--gundam-blue); background: rgba(17, 61, 110, 0.06); }
+.error-card.sev-error   { border-left-color: var(--sazabi-red); }
+
+.error-card-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.error-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.error-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.error-card-hint {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.error-card-raw > summary {
+  font-size: 11px;
+  color: var(--ash);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.error-card-raw > summary::before {
+  content: "▶ ";
+  font-size: 9px;
+}
+
+.error-card-raw[open] > summary::before {
+  content: "▼ ";
+}
+
+.error-card-raw > summary::-webkit-details-marker {
+  display: none;
+}
+
+.error-card-raw pre {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--ink);
+  color: var(--gundam-white);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* 向后兼容：旧 .error-msg 样式保留 */
 .error-msg {
   background: rgba(232, 106, 140, 0.08);
   border: 1px solid var(--char-pink);

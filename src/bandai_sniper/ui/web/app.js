@@ -32,6 +32,9 @@ window.addEventListener("pywebviewready", async () => {
     input.value = t.toISOString().slice(0, 19);
   }
 
+  // SPU URL 自动识别
+  wireSpuAutoParse();
+
   // 启动状态轮询
   startSnapshotPolling();
   startLogPolling();
@@ -134,15 +137,71 @@ async function fetchSkus() {
   }
 }
 
-function parseSpuUrl() {
-  const input = document.getElementById("spu_id");
-  const v = (input.value || "").trim();
-  // 从 URL 里 id=XXXX 抽 SPU
-  const m = v.match(/[?&]id=(\d+)/);
-  if (m) {
-    input.value = m[1];
-    showFeedback(`已解析 SPU ID: ${m[1]}`, "info");
+// 可识别的 SPU id 位置（按优先级尝试）
+const SPU_URL_PATTERNS = [
+  /[?&]spuId=(\d+)/i,                        // spuId=6521
+  /[?&]id=(\d+)/i,                           // 商品详情页 ?id=6521
+  /\/(?:spu|commodity)\/[^?]*?(\d+)/i,       // /spu/6521 或 /commodity/6521/xxx
+  /\b(\d{4,7})\b/,                           // 兜底：4-7 位纯数字 token
+];
+
+function extractSpuId(raw) {
+  const s = (raw || "").trim();
+  if (!s) return null;
+  // 已经是纯数字（3-7 位），直接用
+  if (/^\d{3,7}$/.test(s)) return s;
+  for (const re of SPU_URL_PATTERNS) {
+    const m = s.match(re);
+    if (m) return m[1];
   }
+  return null;
+}
+
+function parseSpuUrl(opts = {}) {
+  const input = document.getElementById("spu_id");
+  const raw = input.value || "";
+  const found = extractSpuId(raw);
+  if (!found) {
+    if (!opts.silent) showFeedback("没识别到 SPU ID，手动输数字也行", "error");
+    return null;
+  }
+  // 只有当当前值不是纯数字（即原始是 URL 之类）才回填，避免把用户手输的 SPU 覆盖
+  if (input.value.trim() !== found) {
+    input.value = found;
+    flashOk(input);
+    if (!opts.silent) showFeedback(`已解析 SPU ID: ${found}`, "success");
+  }
+  return found;
+}
+
+// 粘贴时自动解析（setTimeout 0 让浏览器先完成 value 更新）
+function wireSpuAutoParse() {
+  const input = document.getElementById("spu_id");
+  if (!input) return;
+  input.addEventListener("paste", () => {
+    setTimeout(() => parseSpuUrl({ silent: true }), 0);
+  });
+  // input 变化超过 20 字符（明显是 URL 不是手输 SPU）时也自动解析
+  input.addEventListener("input", () => {
+    if ((input.value || "").length > 20) parseSpuUrl({ silent: true });
+  });
+}
+
+// 输入框右上角瞬闪一个绿✓
+function flashOk(inputEl) {
+  const parent = inputEl.parentElement;
+  if (!parent) return;
+  parent.style.position = parent.style.position || "relative";
+  const tag = document.createElement("span");
+  tag.textContent = "✓";
+  tag.style.cssText = `
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--gundam-yellow); font-weight: 700; font-size: 16px;
+    pointer-events: none; transition: opacity 0.5s; z-index: 2;
+  `;
+  parent.appendChild(tag);
+  setTimeout(() => { tag.style.opacity = "0"; }, 600);
+  setTimeout(() => tag.remove(), 1100);
 }
 
 async function testNotify() {
@@ -276,7 +335,7 @@ function applySnapshot(s) {
   } else if (st === "failed" || st === "stopped") {
     if (currentView !== "failed") switchView("failed");
     stopCountdown();
-    document.getElementById("error-msg").textContent = s.error || s.phase_msg || "未知错误";
+    renderFailure(s.error || s.phase_msg || "未知错误");
   }
   // 阶段文案
   const pl = document.getElementById("phase-label");
@@ -286,6 +345,102 @@ function applySnapshot(s) {
 function renderSuccess(pay) {
   document.getElementById("order-id").textContent = pay.order_id || "(未知)";
   document.getElementById("prepay-id").textContent = pay.prepay_id || "(未知)";
+}
+
+// ─── 错误分类 ──────────────────────────────
+// 按最像-先匹配顺序，捕到就返回 {icon, title, hint, severity}
+// severity: "error" | "warning" | "info"
+const ERROR_CHECKS = [
+  [/code=(?:302|703|307|1004)|api-access-token.*(过期|失效)/i, {
+    icon: "🔑", sev: "warning",
+    title: "CK 已失效",
+    hint: "抓一个新的 api-access-token 粘到「账号」卡片，重新开始。",
+  }],
+  [/code=2001|风控|rate.?limit/i, {
+    icon: "🛡️", sev: "error",
+    title: "被万代风控拦截",
+    hint: "等 5-10 分钟再试；避免同一账号短时间内频繁试同一商品。",
+  }],
+  [/code=101|ValidationError|参数/i, {
+    icon: "⚙️", sev: "error",
+    title: "参数异常",
+    hint: "脚本字段和服务端不对齐（万代可能改版了），查看下面原始错误。",
+  }],
+  [/限购|purchaseLimit|over.*limit/i, {
+    icon: "🚫", sev: "warning",
+    title: "超出限购",
+    hint: "该商品限购 N 件，当前账号已超。换账号或减少数量。",
+  }],
+  [/库存|stock|sold.?out|sellOut/i, {
+    icon: "📦", sev: "error",
+    title: "库存不足",
+    hint: "抢晚了或真卖光了。下次注意 snipe_time 精度。",
+  }],
+  [/未开售|未开抢|saleStatus/i, {
+    icon: "⏰", sev: "warning",
+    title: "尚未开售",
+    hint: "检查 snipe_time 是否和官方预告一致（含时区）。",
+  }],
+  [/PRICE_GUARD|价格.*超过|price_ceiling/i, {
+    icon: "💰", sev: "warning",
+    title: "价格护栏触发",
+    hint: "结算价超过你设的 price_ceiling，可能是运费/优惠意外。提升上限或检查配置。",
+  }],
+  [/HTTPStatusError.*432|\b432\b/, {
+    icon: "🕵️", sev: "error",
+    title: "UA/Referer 被拒（432）",
+    hint: "client.py 默认头应该带 User-Agent + Referer；确认没被改过。",
+  }],
+  [/(connect|read|pool).*timeout|ConnectError/i, {
+    icon: "📡", sev: "info",
+    title: "网络超时",
+    hint: "检查网络连通性；WSL 用户可以试 Windows 原生网络。",
+  }],
+  [/validation\s*error|field required/i, {
+    icon: "📝", sev: "warning",
+    title: "配置格式错",
+    hint: "填写的字段格式不合法（日期、数字或缺必填项）。",
+  }],
+  [/已有抢购.*正在进行/i, {
+    icon: "⏳", sev: "info",
+    title: "上一轮抢购没结束",
+    hint: "点返回等几秒再试，或重启 GUI。",
+  }],
+  [/Padding|aes_decrypt|decrypt/i, {
+    icon: "🔐", sev: "error",
+    title: "解密失败",
+    hint: "服务端返回了非预期内容；通常 CK 不对或接口改版。",
+  }],
+  [/全部.*worker.*失败/i, {
+    icon: "💥", sev: "error",
+    title: "所有 worker 都失败",
+    hint: "展开原始错误看最后一次的具体 code；真抢不到 / 风控 / 限购 最常见。",
+  }],
+  [/已中止|cancelled|CancelledError/i, {
+    icon: "✋", sev: "info",
+    title: "已手动中止",
+    hint: "你点了中止按钮，没毛病。",
+  }],
+];
+
+function classifyError(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return { icon: "❓", sev: "info", title: "未知错误", hint: "没有错误信息，看日志定位。", raw: "" };
+  for (const [re, info] of ERROR_CHECKS) {
+    if (re.test(s)) return { ...info, raw: s };
+  }
+  return { icon: "⚠️", sev: "error", title: "异常", hint: "未分类错误，展开看原始报错。", raw: s };
+}
+
+function renderFailure(raw) {
+  const info = classifyError(raw);
+  const card = document.getElementById("error-card");
+  card.classList.remove("sev-error", "sev-warning", "sev-info");
+  card.classList.add("sev-" + info.sev);
+  document.getElementById("err-icon").textContent = info.icon;
+  document.getElementById("err-title").textContent = info.title;
+  document.getElementById("err-hint").textContent = info.hint;
+  document.getElementById("error-msg").textContent = info.raw || "(无详细)";
 }
 
 // ─── 日志轮询 ──────────────────────────────
