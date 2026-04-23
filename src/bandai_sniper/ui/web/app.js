@@ -78,7 +78,8 @@ async function runPrecheck() {
   try {
     const res = await pywebview.api.precheck_only(form);
     if (!res.ok) {
-      showFeedback("预检失败：" + (res.error || "未知"), "error");
+      const info = classifyError(res.error || "未知");
+      showFeedback(`${info.icon} ${info.title} · ${info.hint}`, "error");
       return;
     }
     // 渲染商品
@@ -110,20 +111,28 @@ async function runPrecheck() {
       "success"
     );
 
-    // 自动拉 SKU
-    fetchSkus();
+    // 自动拉 SKU（silent：已有"预检通过"提示，不重复）
+    fetchSkus({ silent: true });
   } catch (e) {
     showFeedback("预检异常：" + e, "error");
   }
 }
 
-async function fetchSkus() {
+async function fetchSkus(opts = {}) {
   const ck = document.getElementById("ck").value;
   const spuId = document.getElementById("spu_id").value;
-  if (!ck || !spuId) return;
+  if (!ck || !spuId) {
+    if (!opts.silent) showFeedback("需要先填 CK 和 SPU ID", "error");
+    return;
+  }
   try {
     const res = await pywebview.api.list_skus(ck, spuId);
-    if (!res.ok) return;
+    if (!res.ok) {
+      // 常见：CK 过期返 302 → Api 层转成 {ok: false, error: "ApiError: [302] ..."}
+      const info = classifyError(res.error || "");
+      showFeedback(`${info.icon} ${info.title} · ${info.hint}`, "error");
+      return;
+    }
     const sel = document.getElementById("sku_id");
     sel.innerHTML = "";
     for (const s of (res.skus || [])) {
@@ -132,8 +141,12 @@ async function fetchSkus() {
       opt.textContent = `${s.name} · ¥${s.price} · 库存 ${s.stock}`;
       sel.appendChild(opt);
     }
+    if (!opts.silent) {
+      showFeedback(`✅ 已加载 ${res.skus.length} 个 SKU`, "success");
+    }
   } catch (e) {
     console.warn("list_skus failed", e);
+    showFeedback("刷新 SKU 异常: " + e, "error");
   }
 }
 
