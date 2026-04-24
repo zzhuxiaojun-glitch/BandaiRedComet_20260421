@@ -525,3 +525,109 @@ function showHelp(topic) {
     alert("CK 获取方式：\n\n1) 使用朋友给的「万代上号小程序抓Token.exe」\n   ↳ 连上微信小程序 → 工具窗口会显示 Token\n\n2) 或按文档 10_使用指南.md §10.2 自己抓包");
   }
 }
+
+// ─── 从 HAR 选商品（Phase 2.x）──────────────
+async function openHarPicker() {
+  const hint = document.getElementById("har-modal-hint");
+  const list = document.getElementById("har-product-list");
+  hint.textContent = "弹出文件选择器中…";
+  list.innerHTML = "";
+  document.getElementById("har-modal").classList.remove("hidden");
+
+  try {
+    const res = await pywebview.api.pick_har_and_list();
+    if (!res.ok) {
+      hint.textContent = res.error || "失败";
+      if (res.error === "已取消") {
+        closeHarModal();
+      }
+      return;
+    }
+    renderHarProducts(res.products, res.har_path);
+  } catch (e) {
+    hint.textContent = "异常: " + e;
+  }
+}
+
+function renderHarProducts(products, harPath) {
+  const hint = document.getElementById("har-modal-hint");
+  const list = document.getElementById("har-product-list");
+  hint.textContent = `来自 ${harPath} · 共 ${products.length} 个商品 · 点一行即可填入`;
+  list.innerHTML = "";
+
+  for (const p of products) {
+    const item = document.createElement("div");
+    item.className = "har-product-item";
+    item.onclick = () => pickProductFromHar(p);
+
+    const head = document.createElement("div");
+    head.className = "har-product-head";
+
+    const idBadge = document.createElement("span");
+    idBadge.className = "har-product-spuid";
+    idBadge.textContent = p.spu_id;
+    head.appendChild(idBadge);
+
+    if (p.price != null) {
+      const price = document.createElement("span");
+      price.className = "har-product-price";
+      price.textContent = "¥" + p.price;
+      head.appendChild(price);
+    }
+    if (p.stock != null) {
+      const stock = document.createElement("span");
+      stock.className = "har-product-stock";
+      stock.textContent = "库存 " + p.stock;
+      head.appendChild(stock);
+    }
+    if (p.status === 0) {
+      const st = document.createElement("span");
+      st.className = "har-product-status-ok";
+      st.textContent = "可售";
+      head.appendChild(st);
+    } else if (p.status === 1) {
+      const st = document.createElement("span");
+      st.className = "har-product-status-pending";
+      st.textContent = "未开售";
+      if (p.sale_start) st.textContent += "（" + p.sale_start + "）";
+      head.appendChild(st);
+    }
+
+    item.appendChild(head);
+
+    const name = document.createElement("div");
+    name.className = "har-product-name";
+    name.textContent = p.name_cn || "(未知中文名)";
+    item.appendChild(name);
+
+    if (p.name_jp) {
+      const jp = document.createElement("div");
+      jp.className = "har-product-name-jp";
+      jp.textContent = "（日）" + p.name_jp;
+      item.appendChild(jp);
+    }
+
+    list.appendChild(item);
+  }
+}
+
+function pickProductFromHar(p) {
+  const input = document.getElementById("spu_id");
+  input.value = p.spu_id;
+  flashOk(input);
+  showFeedback(`已选商品 SPU=${p.spu_id}（${p.name_cn || ""}）`, "success");
+  closeHarModal();
+  // 触发自动拉 SKU（silent，因为上面已经有 feedback）
+  fetchSkus({ silent: true });
+}
+
+function closeHarModal() {
+  document.getElementById("har-modal").classList.add("hidden");
+}
+
+// ESC 关闭 modal
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !document.getElementById("har-modal").classList.contains("hidden")) {
+    closeHarModal();
+  }
+});

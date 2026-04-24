@@ -43,6 +43,9 @@
           <input type="text" id="spu_id" placeholder="粘贴商品 URL 或填 SPU ID · 自动识别">
           <button class="btn-secondary" onclick="parseSpuUrl()">解析</button>
         </div>
+        <div class="hint">
+          不知道 SPU ID？<a href="#" onclick="openHarPicker(); return false;">📁 从 HAR 选商品</a>
+        </div>
       </label>
 
       <div id="product-preview" class="product-preview hidden">
@@ -238,6 +241,18 @@
       </div>
     </div>
   </section>
+
+  <!-- ═══════ Modal：从 HAR 选商品 ═══════ -->
+  <div id="har-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>从 HAR 选商品</h2>
+        <button class="btn-mini" onclick="closeHarModal()">✕</button>
+      </div>
+      <div class="modal-hint" id="har-modal-hint">选一个 HAR 文件…</div>
+      <div id="har-product-list" class="har-product-list"></div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

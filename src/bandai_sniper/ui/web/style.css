@@ -607,3 +607,137 @@ button:disabled {
   text-align: left;
   margin-bottom: 12px;
 }
+
+/* ═══ Modal（从 HAR 选商品）═══ */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-card {
+  background: var(--gundam-white);
+  border-radius: 12px;
+  border: 2px solid var(--sazabi-red);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalIn 0.2s ease;
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--ink);
+  color: var(--gundam-white);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+.modal-header .btn-mini {
+  background: transparent;
+  color: var(--gundam-white);
+  border: 1px solid var(--ash);
+  padding: 2px 10px;
+}
+
+.modal-hint {
+  padding: 10px 18px;
+  font-size: 12px;
+  color: var(--ash);
+  background: rgba(17, 61, 110, 0.04);
+  border-bottom: 1px solid var(--line);
+}
+
+.har-product-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+.har-product-item {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.har-product-item:hover {
+  background: rgba(247, 210, 0, 0.15);
+}
+
+.har-product-item:last-child {
+  border-bottom: none;
+}
+
+.har-product-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.har-product-spuid {
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--sazabi-red);
+  background: rgba(200, 18, 44, 0.08);
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+
+.har-product-price {
+  font-size: 13px;
+  color: var(--gundam-blue);
+  font-weight: 600;
+}
+
+.har-product-stock {
+  font-size: 11px;
+  color: var(--ash);
+}
+
+.har-product-status-ok { color: var(--gundam-yellow); font-weight: 600; }
+.har-product-status-pending { color: var(--char-pink); }
+
+.har-product-name {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.har-product-name-jp {
+  font-size: 11px;
+  color: var(--ash);
+  font-family: "Noto Sans JP", Meiryo, "Yu Gothic", sans-serif;
+  margin-top: 2px;
+}

@@ -211,6 +211,36 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def pick_har_and_list(self) -> dict:
+        """弹原生文件选择器让用户选一个 HAR，解析后返回商品列表。
+        给 GUI「从 HAR 选商品」按钮用。
+        """
+        import webview
+
+        from ..har_utils import extract_products_from_har
+
+        wins = webview.windows
+        if not wins:
+            return {"ok": False, "error": "窗口还没就绪"}
+        paths = wins[0].create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=("HAR Files (*.har)", "All Files (*.*)"),
+            allow_multiple=False,
+        )
+        if not paths:
+            return {"ok": False, "error": "已取消"}
+        har_path = paths[0] if isinstance(paths, (list, tuple)) else paths
+        try:
+            products = extract_products_from_har(har_path)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if not products:
+            return {
+                "ok": False,
+                "error": "HAR 里没商品。确认抓包时打开过至少一个商品详情页。",
+            }
+        return {"ok": True, "har_path": str(har_path), "products": products}
+
     # ───────────── 内部 ─────────────
 
     def _dict_to_config(self, d: dict) -> Config:
