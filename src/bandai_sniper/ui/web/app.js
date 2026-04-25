@@ -13,6 +13,20 @@ let currentView = "form";
 let cachedAddresses = []; // 填地址下拉用
 let totalWait = null;     // 总等待时间，用于 progress 计算
 
+// ─── saleStatus 取值（参见 har_utils.py SALE_STATUS_MAP）─────
+// 0=可售 / 1=未开售（saleStartTime 之前）/ 2=已结束（saleEndTime 之后）
+const SALE_STATUS_TEXT = { 0: "可售", 1: "未开售", 2: "已结束" };
+const SALE_STATUS_CLASS = {
+  0: "har-product-status-ok",
+  1: "har-product-status-pending",
+  2: "har-product-status-ended",
+};
+
+function formatSaleStatus(s) {
+  if (s == null) return "";
+  return SALE_STATUS_TEXT[s] != null ? SALE_STATUS_TEXT[s] : `未知(${s})`;
+}
+
 // ─── 启动 ─────────────────────────────────
 window.addEventListener("pywebviewready", async () => {
   // 预填用户上次填过的字段
@@ -92,8 +106,7 @@ async function runPrecheck() {
       p.price != null ? "¥" + p.price : "价格 ?";
     document.getElementById("product-stock").textContent =
       p.stock != null ? ("库存 " + p.stock) : "";
-    document.getElementById("product-status").textContent =
-      p.saleStatus === 0 ? "可售" : "未开售 (" + p.saleStatus + ")";
+    document.getElementById("product-status").textContent = formatSaleStatus(p.saleStatus);
 
     // 地址下拉
     cachedAddresses = res.addresses || [];
@@ -580,16 +593,11 @@ function renderHarProducts(products, harPath) {
       stock.textContent = "库存 " + p.stock;
       head.appendChild(stock);
     }
-    if (p.status === 0) {
+    if (p.status != null) {
       const st = document.createElement("span");
-      st.className = "har-product-status-ok";
-      st.textContent = "可售";
-      head.appendChild(st);
-    } else if (p.status === 1) {
-      const st = document.createElement("span");
-      st.className = "har-product-status-pending";
-      st.textContent = "未开售";
-      if (p.sale_start) st.textContent += "（" + p.sale_start + "）";
+      st.className = SALE_STATUS_CLASS[p.status] || "har-product-status-pending";
+      st.textContent = formatSaleStatus(p.status);
+      if (p.status === 1 && p.sale_start) st.textContent += "（" + p.sale_start + "）";
       head.appendChild(st);
     }
 

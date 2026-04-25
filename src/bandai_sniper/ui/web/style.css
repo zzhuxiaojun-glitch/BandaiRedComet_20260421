@@ -728,6 +728,7 @@ button:disabled {
 
 .har-product-status-ok { color: var(--gundam-yellow); font-weight: 600; }
 .har-product-status-pending { color: var(--char-pink); }
+.har-product-status-ended { color: var(--ash); text-decoration: line-through; }
 
 .har-product-name {
   font-size: 13px;

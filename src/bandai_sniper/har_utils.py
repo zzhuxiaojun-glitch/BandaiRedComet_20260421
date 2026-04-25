@@ -105,17 +105,35 @@ def extract_products_from_har(har_path: str | Path) -> list[dict]:
     return sorted(seen.values(), key=lambda x: x["spu_id"])
 
 
+# 服务端 saleStatus 取值（2026-04-26 实战观察）
+# 0 = 可售（在 saleStartTime ~ saleEndTime 窗口内）
+# 1 = 未开售（saleStartTime 之前）
+# 2 = 已结束（saleEndTime 之后，小程序底部显示"预售已结束"灰按钮）
+SALE_STATUS_MAP: dict[int | None, str] = {
+    0: "可售",
+    1: "未开售",
+    2: "已结束",
+    None: "-",
+}
+
+
+def format_sale_status(s) -> str:
+    """saleStatus → 中文，未知值原样数字。"""
+    if s in SALE_STATUS_MAP:
+        return SALE_STATUS_MAP[s]
+    return f"未知({s})"
+
+
 def format_products_table(products: Iterable[dict]) -> str:
     """给 CLI 打印的漂亮表格。"""
     lines = [
         f"{'SPU ID':<8} {'价格':<10} {'库存':<8} {'状态':<10} {'开售时间':<22} 商品名",
         "─" * 100,
     ]
-    status_map = {0: "可售", 1: "未开售", None: "-"}
     for info in products:
         price = f"¥{info['price']}" if info['price'] is not None else "-"
         stock = str(info['stock']) if info['stock'] is not None else "-"
-        status = status_map.get(info["status"], str(info["status"]))
+        status = format_sale_status(info["status"])
         lines.append(
             f"{info['spu_id']:<8} {price:<10} {stock:<8} {status:<10} "
             f"{info['sale_start']:<22} {info['name_cn']}"
