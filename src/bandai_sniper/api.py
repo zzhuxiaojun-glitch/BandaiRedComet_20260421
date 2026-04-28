@@ -147,21 +147,53 @@ class BandaiApi:
     async def query_spu(
         self,
         *,
-        category_id: int,
+        category_id: int | None = None,
+        search_text: str | None = None,
         page_num: int = 1,
         page_size: int = 12,
         can_buy: str = "1",
+        order_by: int = 0,  # 0=默认 / 1=销量 / 2=价格倒序 / 3=价格正序
     ) -> dict:
-        """返回 `{total, list}`。"""
-        return _unwrap(await self.c.post(
-            "/api/commodity/v1/app/spu/query",
-            {
-                "canBuy": can_buy,
-                "categoryId": str(category_id),
-                "pageNum": str(page_num),
-                "pageSize": str(page_size),
-            },
-        ))
+        """商品列表 / 关键词搜索（统一接口，参数三选一组合）。
+
+        来源：万代小程序 `pages/commodity/search-page/search-page.js getList()` 用的
+        参数集，证明 spu/query 同时支持分类筛选（categoryId）和关键词搜索
+        （searchText），它们可以同时用也可以单独用。
+
+        返回 `{total, list}`。
+        """
+        params: dict = {
+            "canBuy": can_buy,
+            "pageNum": str(page_num),
+            "pageSize": str(page_size),
+            "orderByCondition": str(order_by),
+        }
+        if category_id is not None:
+            params["categoryId"] = str(category_id)
+        if search_text:
+            params["searchText"] = search_text
+        return _unwrap(await self.c.post("/api/commodity/v1/app/spu/query", params))
+
+    async def search_products(
+        self,
+        keyword: str,
+        *,
+        page_num: int = 1,
+        page_size: int = 20,
+    ) -> dict:
+        """关键词搜索商品（GUI "🔍 搜索" 按钮的后端入口）。
+
+        薄包装 query_spu，只暴露 keyword + 分页两个参数；其他细节
+        （只查可售 / 默认排序）走默认。
+        """
+        if not keyword or not keyword.strip():
+            return {"total": 0, "list": []}
+        return await self.query_spu(
+            search_text=keyword.strip(),
+            page_num=page_num,
+            page_size=page_size,
+            can_buy="1",
+        )
 
     async def query_spu_simple(self, spu_id_list: list[str]) -> list[dict]:
         return _unwrap(await self.c.post(

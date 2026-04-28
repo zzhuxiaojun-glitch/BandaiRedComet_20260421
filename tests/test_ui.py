@@ -147,3 +147,43 @@ def test_load_saved_empty_when_no_file(tmp_path, monkeypatch):
 
     api = Api()
     assert api.load_saved() == {}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Api.search_products 入参校验（不发真请求）
+# ═══════════════════════════════════════════════════════════════
+
+def test_search_products_rejects_empty_ck():
+    api = Api()
+    r = api.search_products("", "里歇尔")
+    assert r["ok"] is False
+    assert "CK" in r["error"]
+
+
+def test_search_products_rejects_empty_keyword():
+    api = Api()
+    r = api.search_products("dummy_ck", "")
+    assert r["ok"] is False
+    assert "关键词" in r["error"] or "keyword" in r["error"].lower()
+
+
+def test_search_products_strips_whitespace_keyword():
+    """全空白等价于空关键词。"""
+    api = Api()
+    r = api.search_products("dummy_ck", "   \t  ")
+    assert r["ok"] is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# BandaiApi.query_spu 参数兼容（关键：旧调用 + 新搜索都要工作）
+# ═══════════════════════════════════════════════════════════════
+
+def test_query_spu_signature_supports_search_text():
+    """query_spu 必须接受 search_text 关键字参数。"""
+    import inspect
+    from bandai_sniper.api import BandaiApi
+    sig = inspect.signature(BandaiApi.query_spu)
+    assert "search_text" in sig.parameters
+    assert "category_id" in sig.parameters
+    # category_id 必须可选（之前是必填）—— 否则纯关键词搜索不能工作
+    assert sig.parameters["category_id"].default is None

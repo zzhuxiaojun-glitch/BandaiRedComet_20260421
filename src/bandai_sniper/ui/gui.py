@@ -146,6 +146,55 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
+    def search_products(self, ck: str, keyword: str, page_num: int = 1) -> dict:
+        """关键词搜索商品（GUI "🔍 搜索" 按钮）。
+
+        直接调万代的 spu/query 接口（参数 searchText），实时返回匹配商品。
+        无本地缓存。返回的 product 字段格式与 har_utils.extract_products
+        对齐，前端可复用 renderHarProducts 渲染。
+        """
+        if not ck:
+            return {"ok": False, "error": "CK 未填写"}
+        kw = (keyword or "").strip()
+        if not kw:
+            return {"ok": False, "error": "请输入关键词"}
+
+        async def _do() -> dict:
+            client = BandaiClient(ck=ck, timeout=8.0)
+            try:
+                api = BandaiApi(client)
+                await api.sync_timestamp()
+                result = await api.search_products(kw, page_num=page_num, page_size=30)
+                items = result.get("list", []) if isinstance(result, dict) else []
+                products = [
+                    {
+                        "spu_id": str(item.get("id")),
+                        "name_cn": item.get("nameCn", ""),
+                        "name_jp": item.get("nameJp") or item.get("nameJa") or "",
+                        "price": item.get("price"),
+                        "stock": None,  # 列表接口不返回库存，要点进详情才有
+                        "status": None,  # 同上 saleStatus 也不在列表里
+                        "sale_start": item.get("saleStartTime", ""),
+                        "deposit": None,
+                    }
+                    for item in items
+                ]
+                return {
+                    "ok": True,
+                    "keyword": kw,
+                    "page_num": page_num,
+                    "total": result.get("total", 0) if isinstance(result, dict) else 0,
+                    "products": products,
+                }
+            finally:
+                await client.aclose()
+
+        try:
+            return asyncio.run(_do())
+        except Exception as e:
+            logger.exception("search_products 失败")
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
     # ───────────── 抢购 ─────────────
 
     def start_snipe(self, cfg_dict: dict) -> dict:

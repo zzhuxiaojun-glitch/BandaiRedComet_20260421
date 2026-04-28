@@ -539,8 +539,51 @@ function showHelp(topic) {
   }
 }
 
+// ─── 关键词搜索商品（Phase 2.x · 直连万代 spu/query）──
+async function searchProducts() {
+  const ck = document.getElementById("ck").value.trim();
+  if (!ck) {
+    showFeedback("请先在 ① 账号 卡片填 CK", "error");
+    document.getElementById("ck").focus();
+    return;
+  }
+  const kw = document.getElementById("search_keyword").value.trim();
+  if (!kw) {
+    showFeedback("请输入关键词", "error");
+    return;
+  }
+
+  const hint = document.getElementById("har-modal-hint");
+  const list = document.getElementById("har-product-list");
+  // modal 标题改成"搜索结果"语境
+  document.querySelector("#har-modal .modal-header h2").textContent = "搜索结果";
+  hint.textContent = `搜索"${kw}"中…`;
+  list.innerHTML = "";
+  document.getElementById("har-modal").classList.remove("hidden");
+
+  try {
+    const res = await pywebview.api.search_products(ck, kw);
+    if (!res.ok) {
+      const info = classifyError(res.error || "搜索失败");
+      hint.textContent = `${info.icon} ${info.title} · ${info.hint}`;
+      return;
+    }
+    if (!res.products || res.products.length === 0) {
+      hint.textContent = `没找到含"${kw}"的商品。换个关键词试试`;
+      return;
+    }
+    hint.textContent = `搜索"${kw}" · 共 ${res.total} 个匹配，本页显示 ${res.products.length} 个 · 点一行填入`;
+    // 复用 HAR modal 的渲染逻辑
+    renderHarProducts(res.products, null /* 不显示来源路径 */);
+  } catch (e) {
+    hint.textContent = "异常: " + e;
+  }
+}
+
 // ─── 从 HAR 选商品（Phase 2.x）──────────────
 async function openHarPicker() {
+  // 还原 modal 标题（万一刚用过搜索）
+  document.querySelector("#har-modal .modal-header h2").textContent = "从 HAR 选商品";
   const hint = document.getElementById("har-modal-hint");
   const list = document.getElementById("har-product-list");
   hint.textContent = "弹出文件选择器中…";
@@ -565,7 +608,10 @@ async function openHarPicker() {
 function renderHarProducts(products, harPath) {
   const hint = document.getElementById("har-modal-hint");
   const list = document.getElementById("har-product-list");
-  hint.textContent = `来自 ${harPath} · 共 ${products.length} 个商品 · 点一行即可填入`;
+  // 搜索调用方会自己设 hint，HAR 调用方走默认文案
+  if (harPath) {
+    hint.textContent = `来自 ${harPath} · 共 ${products.length} 个商品 · 点一行即可填入`;
+  }
   list.innerHTML = "";
 
   for (const p of products) {

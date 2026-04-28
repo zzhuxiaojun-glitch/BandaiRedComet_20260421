@@ -37,14 +37,24 @@
     <!-- 商品卡片 -->
     <div class="card">
       <h2>② 商品</h2>
+
       <label class="field">
-        <span>商品链接或 SPU ID</span>
+        <span>关键词搜索（推荐）</span>
+        <div class="row">
+          <input type="text" id="search_keyword" placeholder="输入商品名 · 例：里歇尔 / 高达 / 海贼王" onkeypress="if(event.key==='Enter') searchProducts()">
+          <button class="btn-secondary" onclick="searchProducts()">🔍 搜索</button>
+        </div>
+        <div class="hint">实时调万代搜索接口 · 需要先填好 ① 账号 CK</div>
+      </label>
+
+      <label class="field">
+        <span>或 SPU ID</span>
         <div class="row">
           <input type="text" id="spu_id" placeholder="粘贴商品 URL 或填 SPU ID · 自动识别">
           <button class="btn-secondary" onclick="parseSpuUrl()">解析</button>
         </div>
         <div class="hint">
-          不知道 SPU ID？<a href="#" onclick="openHarPicker(); return false;">📁 从 HAR 选商品</a>
+          也可以 <a href="#" onclick="openHarPicker(); return false;">📁 从 HAR 选商品</a>
         </div>
       </label>
 
