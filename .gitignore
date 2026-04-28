@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-win/
 venv/
 .env
 config.yaml
@@ -9,6 +10,11 @@ captures/*.har
 captures/!.gitkeep
 *.log
 .DS_Store
+
+# PyInstaller 打包产物（在 Windows 上重新跑就能生成）
+build/
+dist/
+*.spec.bak
 
 # 朋友提供的第三方工具与视频（闭源 / 未授权分发）
 万代上号/
