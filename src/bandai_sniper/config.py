@@ -37,7 +37,11 @@ class Strategy(BaseModel):
 
 class Notify(BaseModel):
     enabled: bool = False
-    provider: Literal["bark", "server_chan", "feishu", "none"] = "none"
+    # bark = iOS 推送 / server_chan = 微信公众号 /
+    # feishu = 飞书机器人 / pushplus = 微信公众号 + QQ + 钉钉等
+    provider: Literal[
+        "bark", "server_chan", "feishu", "pushplus", "none"
+    ] = "none"
     token: str = ""
 
 

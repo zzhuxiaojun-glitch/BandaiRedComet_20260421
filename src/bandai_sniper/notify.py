@@ -22,6 +22,18 @@ async def push(cfg: Notify, title: str, content: str) -> None:
                     cfg.token,
                     json={"msg_type": "text", "content": {"text": f"{title}\n{content}"}},
                 )
+            elif cfg.provider == "pushplus":
+                # PushPlus 一个 token 可同时推到微信公众号 / QQ / 钉钉等
+                # 前提：用户在 pushplus.plus 网站绑定相应通道
+                # 默认走"一对一" 推送（默认通道由用户在网站设置）
+                await c.post(
+                    "http://www.pushplus.plus/send",
+                    json={
+                        "token": cfg.token,
+                        "title": title,
+                        "content": content,
+                    },
+                )
         logger.info(f"通知已推送 [{cfg.provider}]")
     except Exception as e:
         logger.error(f"通知推送失败: {e}")
