@@ -81,6 +81,24 @@ class Api:
                 except Exception as e:
                     detail = {"error": str(e)}
 
+                # 顺手 upsert 商品快照（_safe 吞错）
+                if isinstance(detail, dict) and detail.get("id"):
+                    from .. import db
+                    db.upsert_product(
+                        spu_id=str(detail.get("id")),
+                        name_cn=detail.get("nameCn"),
+                        name_jp=detail.get("nameJp") or detail.get("nameJa"),
+                        price=detail.get("price"),
+                        category_id=detail.get("categoryId"),
+                        deposit_amount=detail.get("depositAmount"),
+                        source="precheck",
+                        raw={k: detail.get(k) for k in (
+                            "id", "nameCn", "price", "stock", "saleStatus",
+                            "saleStartTime", "saleEndTime", "depositAmount",
+                            "categoryId", "spuType",
+                        )},
+                    )
+
                 addrs = await api.list_addresses()
                 return {
                     "ok": True,
@@ -179,11 +197,30 @@ class Api:
                     }
                     for item in items
                 ]
+                total = result.get("total", 0) if isinstance(result, dict) else 0
+
+                # 写 DB：搜索历史 + 商品 upsert（_safe 装饰器吞错，不影响响应）
+                from .. import db
+                db.add_search_history(kw, total)
+                for item in items:
+                    db.upsert_product(
+                        spu_id=str(item.get("id", "")),
+                        name_cn=item.get("nameCn"),
+                        name_jp=item.get("nameJp") or item.get("nameJa"),
+                        price=item.get("price"),
+                        category_id=item.get("categoryId"),
+                        source="search",
+                        raw={k: item.get(k) for k in (
+                            "id", "nameCn", "spuType", "categoryId", "price",
+                            "saleStartTime", "saleEndTime", "saleTag",
+                        )},
+                    )
+
                 return {
                     "ok": True,
                     "keyword": kw,
                     "page_num": page_num,
-                    "total": result.get("total", 0) if isinstance(result, dict) else 0,
+                    "total": total,
                     "products": products,
                 }
             finally:
@@ -304,6 +341,31 @@ class Api:
                          "确认抓包时打开过万代小程序，且不是脱敏后的 HAR。",
             }
         return {"ok": True, "ck": ck, "har_path": str(har_path)}
+
+    # ───────────── 历史查询（DB 读路径）─────────────
+
+    def list_orders(self, limit: int = 50) -> dict:
+        """抢购订单历史，按时间倒序。"""
+        from .. import db
+        rows = db.list_orders(limit=limit) or []
+        return {"ok": True, "orders": rows}
+
+    def list_search_history(self, limit: int = 30) -> dict:
+        """搜索关键词历史（去重 + 按最近搜索时间倒序）。"""
+        from .. import db
+        rows = db.list_search_history(limit=limit, unique=True) or []
+        return {"ok": True, "items": rows}
+
+    def list_seen_products(self, limit: int = 100) -> dict:
+        """见过的商品快照列表（搜索 / 预检过的）。"""
+        from .. import db
+        rows = db.list_products(limit=limit) or []
+        return {"ok": True, "products": rows}
+
+    def clear_search_history(self) -> dict:
+        from .. import db
+        n = db.clear_search_history()
+        return {"ok": True, "cleared": n or 0}
 
     def send_test_notify(self, provider: str, token: str) -> dict:
         """通知通道测试（Phase 2 功能前置），用户贴 token 后能立刻试发。"""

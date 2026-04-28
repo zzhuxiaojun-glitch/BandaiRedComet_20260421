@@ -745,7 +745,193 @@ function closeHarModal() {
 
 // ESC 关闭 modal
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !document.getElementById("har-modal").classList.contains("hidden")) {
-    closeHarModal();
+  if (e.key !== "Escape") return;
+  if (!document.getElementById("har-modal").classList.contains("hidden")) {
+    closeHarModal(); return;
+  }
+  if (!document.getElementById("info-modal").classList.contains("hidden")) {
+    closeInfoModal(); return;
   }
 });
+
+// ─── 通用 Info Modal（订单 / 搜索历史）─────────
+function openInfoModal(title, hint = "") {
+  document.getElementById("info-modal-title").textContent = title;
+  document.getElementById("info-modal-hint").textContent = hint;
+  document.getElementById("info-modal-body").innerHTML = "";
+  document.getElementById("info-modal-footer").innerHTML = "";
+  document.getElementById("info-modal").classList.remove("hidden");
+}
+
+function setInfoModalHint(text) {
+  document.getElementById("info-modal-hint").textContent = text;
+}
+
+function setInfoModalFooter(html) {
+  document.getElementById("info-modal-footer").innerHTML = html;
+}
+
+function setInfoModalEmpty(text) {
+  const body = document.getElementById("info-modal-body");
+  body.innerHTML = `<div class="empty-hint">${text}</div>`;
+}
+
+function closeInfoModal() {
+  document.getElementById("info-modal").classList.add("hidden");
+}
+
+// ─── 我的订单 ───────────────────────────
+const ORDER_STATUS_TEXT = {
+  pending_pay: "待支付",
+  paid: "已付款",
+  cancelled: "已取消",
+  unknown: "未知",
+};
+
+async function openOrdersModal() {
+  openInfoModal("📦 我的订单", "加载中...");
+  try {
+    const res = await pywebview.api.list_orders(50);
+    if (!res.ok) {
+      setInfoModalHint("加载失败：" + (res.error || ""));
+      return;
+    }
+    if (!res.orders || res.orders.length === 0) {
+      setInfoModalHint("还没有抢购记录");
+      setInfoModalEmpty("成功抢中后这里会显示订单。");
+      return;
+    }
+    setInfoModalHint(`共 ${res.orders.length} 条订单 · 按时间倒序`);
+    renderOrders(res.orders);
+  } catch (e) {
+    setInfoModalHint("异常: " + e);
+  }
+}
+
+function renderOrders(orders) {
+  const body = document.getElementById("info-modal-body");
+  body.innerHTML = "";
+  for (const o of orders) {
+    const item = document.createElement("div");
+    item.className = "info-item";
+    const status = o.status || "unknown";
+    const statusText = ORDER_STATUS_TEXT[status] || status;
+    const name = o.spu_name_cn || `SPU ${o.spu_id}` + (o.sku_id ? ` / SKU ${o.sku_id}` : "");
+    const amount = o.order_amount != null
+      ? `¥${o.order_amount}` + (o.deposit_amount ? `（定金 ¥${o.deposit_amount}）` : "")
+      : "";
+
+    const head = document.createElement("div");
+    head.className = "info-item-head";
+    head.innerHTML = `
+      <span class="info-item-id">订单 #${escapeHtml(o.order_id)}</span>
+      <span class="info-item-time">${formatTimeAgo(o.created_at)}</span>
+      <span class="info-item-status status-${status}">${statusText}</span>
+    `;
+    item.appendChild(head);
+
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "info-item-name";
+    nameDiv.textContent = name;
+    item.appendChild(nameDiv);
+
+    if (amount || o.num > 1) {
+      const meta = document.createElement("div");
+      meta.className = "info-item-meta";
+      meta.textContent = [amount, o.num > 1 ? `${o.num} 件` : ""].filter(Boolean).join(" · ");
+      item.appendChild(meta);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "info-item-actions";
+    actions.innerHTML = `
+      <button class="btn-mini" onclick="copyTextRaw('${escapeHtml(o.order_id)}')">复制订单 ID</button>
+      ${o.prepay_id ? `<button class="btn-mini" onclick="copyTextRaw('${escapeHtml(o.prepay_id)}')">复制 prepay_id</button>` : ""}
+    `;
+    item.appendChild(actions);
+
+    body.appendChild(item);
+  }
+}
+
+// ─── 搜索历史 ───────────────────────────
+async function openSearchHistoryModal() {
+  openInfoModal("🔍 搜索历史", "加载中...");
+  try {
+    const res = await pywebview.api.list_search_history(30);
+    if (!res.ok) {
+      setInfoModalHint("加载失败：" + (res.error || ""));
+      return;
+    }
+    if (!res.items || res.items.length === 0) {
+      setInfoModalHint("还没有搜索记录");
+      setInfoModalEmpty("用 ② 商品 卡片的搜索框试试。");
+      return;
+    }
+    setInfoModalHint(`点击关键词重新搜索 · 共 ${res.items.length} 个`);
+    renderSearchHistory(res.items);
+    setInfoModalFooter(`<button class="btn-secondary" onclick="clearSearchHistoryConfirm()">清空历史</button>`);
+  } catch (e) {
+    setInfoModalHint("异常: " + e);
+  }
+}
+
+function renderSearchHistory(items) {
+  const body = document.getElementById("info-modal-body");
+  body.innerHTML = "";
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = "info-item";
+    row.onclick = () => {
+      document.getElementById("search_keyword").value = it.keyword;
+      closeInfoModal();
+      searchProducts();
+    };
+    const kw = document.createElement("span");
+    kw.className = "info-item-keyword";
+    kw.textContent = it.keyword;
+    const meta = document.createElement("div");
+    meta.className = "info-item-meta";
+    const avg = Math.round(it.avg_result || 0);
+    meta.textContent = `${it.times} 次搜索 · 平均 ${avg} 个结果 · ${formatTimeAgo(it.searched_at)}`;
+    row.appendChild(kw);
+    row.appendChild(meta);
+    body.appendChild(row);
+  }
+}
+
+async function clearSearchHistoryConfirm() {
+  if (!confirm("确认清空所有搜索历史？")) return;
+  try {
+    const res = await pywebview.api.clear_search_history();
+    showFeedback(`已清空 ${res.cleared || 0} 条记录`, "success");
+    closeInfoModal();
+  } catch (e) {
+    showFeedback("清空失败: " + e, "error");
+  }
+}
+
+// ─── 工具函数 ───────────────────────────
+function formatTimeAgo(iso) {
+  if (!iso) return "";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return iso;
+  const diff = (Date.now() - t) / 1000;
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  if (diff < 30 * 86400) return `${Math.floor(diff / 86400)} 天前`;
+  return new Date(iso).toLocaleDateString("zh-CN");
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+}
+
+function copyTextRaw(s) {
+  navigator.clipboard.writeText(s).then(
+    () => showFeedback("已复制", "success"),
+    () => showFeedback("复制失败", "error")
+  );
+}

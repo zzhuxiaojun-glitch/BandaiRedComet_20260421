@@ -180,6 +180,25 @@ class SnipeSession:
                     "pay_sign": pay.pay_sign,
                 },
             )
+
+            # 写历史（DB 故障已被 _safe 捕获，不影响主流程）
+            from .. import db
+            t = cfg.target
+            # confirmOrder 响应里有完整价格信息；fire 内部已经算过 draft
+            # 但 fire 不返回 draft，只返回 PayParams。所以这里只能从 pay.raw
+            # 或 sniper 内部状态拿。最稳妥：从 PayParams.raw 取（含 server 算的最终值）
+            db.insert_order(
+                order_id=pay.order_id,
+                spu_id=t.spu_id,
+                sku_id=t.sku_id,
+                num=t.num,
+                spu_name_cn=None,  # 没在 PayParams 里，未来可以补
+                order_amount=None,  # 同上
+                deposit_amount=None,
+                prepay_id=pay.prepay_id,
+                pay_sign=pay.pay_sign,
+                raw=pay.raw,
+            )
         except Exception as e:
             logger.exception(f"会话异常: {e}")
             self._update(

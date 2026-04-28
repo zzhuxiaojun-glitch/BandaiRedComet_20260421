@@ -16,6 +16,12 @@
   <!-- ═══════ 视图 1：表单 ═══════ -->
   <section id="view-form" class="view active">
 
+    <!-- 工具栏 -->
+    <div class="form-toolbar">
+      <button class="btn-link" onclick="openOrdersModal()">📦 我的订单</button>
+      <button class="btn-link" onclick="openSearchHistoryModal()">🔍 搜索历史</button>
+    </div>
+
     <!-- 账号卡片 -->
     <div class="card">
       <h2>① 账号</h2>
@@ -266,6 +272,19 @@
       </div>
       <div class="modal-hint" id="har-modal-hint">选一个 HAR 文件…</div>
       <div id="har-product-list" class="har-product-list"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ 通用 Modal：订单历史 / 搜索历史 ═══════ -->
+  <div id="info-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="info-modal-title">标题</h2>
+        <button class="btn-mini" onclick="closeInfoModal()">✕</button>
+      </div>
+      <div class="modal-hint" id="info-modal-hint"></div>
+      <div id="info-modal-body" class="info-modal-body"></div>
+      <div class="modal-footer" id="info-modal-footer"></div>
     </div>
   </div>
 
