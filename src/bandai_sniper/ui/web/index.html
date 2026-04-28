@@ -26,10 +26,15 @@
             <input type="checkbox" id="remember_ck"> 记住 CK
           </label>
         </span>
-        <textarea id="ck" rows="3" placeholder="粘贴 175 字符左右的 JWT..."></textarea>
+        <textarea id="ck" rows="3" placeholder="粘贴 175 字符左右的 JWT，或点下方"从 HAR 导入"" onblur="verifyCkSoon()"></textarea>
       </label>
+
+      <!-- CK 状态徽章 -->
+      <div id="ck-status" class="ck-status hidden"></div>
+
       <div class="hint">
         会话凭证，通过微信小程序登录后抓包获得。
+        <a href="#" onclick="importCkFromHar(); return false;">📁 从 HAR 导入 CK</a> ·
         <a href="#" onclick="showHelp('ck'); return false;">如何获取？</a>
       </div>
     </div>

@@ -187,3 +187,66 @@ def test_query_spu_signature_supports_search_text():
     assert "category_id" in sig.parameters
     # category_id 必须可选（之前是必填）—— 否则纯关键词搜索不能工作
     assert sig.parameters["category_id"].default is None
+
+
+# ═══════════════════════════════════════════════════════════════
+# har_utils.extract_ck_from_har
+# ═══════════════════════════════════════════════════════════════
+
+def test_extract_ck_from_har_returns_token():
+    """从已知 HAR 抽 CK，期望拿到 175 字符的 JWT。"""
+    from pathlib import Path
+    from bandai_sniper.har_utils import extract_ck_from_har
+    har = Path("tools/bandai_capture_20260422.har")
+    if not har.exists():
+        pytest.skip("HAR fixture not present in this checkout")
+    ck = extract_ck_from_har(har)
+    assert ck is not None
+    assert len(ck) > 100
+    assert ck.startswith("ey")  # JWT base64 起始
+
+
+def test_extract_ck_from_har_skips_redacted(tmp_path):
+    """脱敏后的 HAR（token 被替换成 REDACTED_xxx）应该返回 None。"""
+    import json
+    from bandai_sniper.har_utils import extract_ck_from_har
+    fake_har = {
+        "log": {"entries": [{
+            "request": {
+                "url": "https://crm-app-api.bandainamcoshanghai.com/api/foo",
+                "headers": [{"name": "api-access-token", "value": "REDACTED_API_ACCESS_TOKEN_len175"}],
+            },
+        }]}
+    }
+    p = tmp_path / "fake.har"
+    p.write_text(json.dumps(fake_har))
+    assert extract_ck_from_har(p) is None
+
+
+def test_extract_ck_from_har_no_bandai_requests(tmp_path):
+    """HAR 里没有万代请求 → 返回 None。"""
+    import json
+    from bandai_sniper.har_utils import extract_ck_from_har
+    fake_har = {"log": {"entries": [{
+        "request": {"url": "https://example.com/", "headers": []},
+    }]}}
+    p = tmp_path / "fake.har"
+    p.write_text(json.dumps(fake_har))
+    assert extract_ck_from_har(p) is None
+
+
+# ═══════════════════════════════════════════════════════════════
+# Api.verify_ck 入参校验（不发真请求）
+# ═══════════════════════════════════════════════════════════════
+
+def test_verify_ck_rejects_empty():
+    api = Api()
+    r = api.verify_ck("")
+    assert r["ok"] is False
+    assert "CK" in r["error"] or "空" in r["error"]
+
+
+def test_verify_ck_rejects_whitespace():
+    api = Api()
+    r = api.verify_ck("   \t\n  ")
+    assert r["ok"] is False

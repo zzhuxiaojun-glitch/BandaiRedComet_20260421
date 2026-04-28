@@ -243,6 +243,68 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def verify_ck(self, ck: str) -> dict:
+        """快速验证 CK 有效性（GUI 启动时自动调 + 用户手动改 CK 后调）。
+
+        策略：调最便宜的两个接口 sync_timestamp + whoami，能拿到
+        memberId 就算通过。失败则返回结构化错误（前端走 classifyError）。
+        """
+        if not ck or not ck.strip():
+            return {"ok": False, "error": "CK 为空"}
+
+        async def _do() -> dict:
+            client = BandaiClient(ck=ck.strip(), timeout=6.0)
+            try:
+                api = BandaiApi(client)
+                await api.sync_timestamp()
+                perms = await api.whoami()
+                mids = {
+                    it.get("memberId")
+                    for it in perms
+                    if isinstance(it, dict) and it.get("memberId")
+                }
+                return {"ok": True, "member_id": next(iter(mids), None)}
+            finally:
+                await client.aclose()
+
+        try:
+            return asyncio.run(_do())
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    def import_ck_from_har(self) -> dict:
+        """弹文件选择器让用户选 HAR，从中抽出最新 api-access-token 返回。
+
+        给 GUI 账号卡片的"📁 从 HAR 导入 CK"链接用。前端拿到后填进
+        ck textarea + 立即调 verify_ck 验证。
+        """
+        import webview
+
+        from ..har_utils import extract_ck_from_har
+
+        wins = webview.windows
+        if not wins:
+            return {"ok": False, "error": "窗口还没就绪"}
+        paths = wins[0].create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=("HAR Files (*.har)", "All Files (*.*)"),
+            allow_multiple=False,
+        )
+        if not paths:
+            return {"ok": False, "error": "已取消"}
+        har_path = paths[0] if isinstance(paths, (list, tuple)) else paths
+        try:
+            ck = extract_ck_from_har(har_path)
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if not ck:
+            return {
+                "ok": False,
+                "error": "HAR 里没找到有效的 api-access-token。"
+                         "确认抓包时打开过万代小程序，且不是脱敏后的 HAR。",
+            }
+        return {"ok": True, "ck": ck, "har_path": str(har_path)}
+
     def send_test_notify(self, provider: str, token: str) -> dict:
         """通知通道测试（Phase 2 功能前置），用户贴 token 后能立刻试发。"""
         from ..config import Notify

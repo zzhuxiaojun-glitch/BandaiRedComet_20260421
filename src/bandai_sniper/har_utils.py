@@ -105,6 +105,34 @@ def extract_products_from_har(har_path: str | Path) -> list[dict]:
     return sorted(seen.values(), key=lambda x: x["spu_id"])
 
 
+def extract_ck_from_har(har_path: str | Path) -> str | None:
+    """从 HAR 抽取最新的 api-access-token（CK）。
+
+    策略：反向遍历 entries（HAR 是按时间正序，最新在末尾），找到第一条
+    打万代 API 且 header 里有 api-access-token 的请求，返回那个 token。
+
+    返回 None 表示没找到（HAR 没抓到任何万代请求 / 全是脱敏后的 HAR）。
+    """
+    path = Path(har_path)
+    if not path.exists():
+        raise FileNotFoundError(f"HAR 文件不存在: {path}")
+
+    har = json.loads(path.read_text(encoding="utf-8"))
+    entries = har.get("log", {}).get("entries", [])
+
+    for entry in reversed(entries):
+        url = entry.get("request", {}).get("url", "")
+        if "bandainamcoshanghai.com/api/" not in url:
+            continue
+        for h in entry["request"].get("headers", []):
+            if h.get("name", "").lower() == "api-access-token":
+                token = h.get("value", "")
+                # 真 CK 是 175 字符的 JWT；脱敏后的 HAR 形如 REDACTED_...
+                if token and len(token) > 100 and not token.startswith("REDACTED"):
+                    return token
+    return None
+
+
 # 服务端 saleStatus 取值（2026-04-26 实战观察）
 # 0 = 可售（在 saleStartTime ~ saleEndTime 窗口内）
 # 1 = 未开售（saleStartTime 之前）

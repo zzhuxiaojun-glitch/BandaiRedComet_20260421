@@ -49,10 +49,74 @@ window.addEventListener("pywebviewready", async () => {
   // SPU URL 自动识别
   wireSpuAutoParse();
 
+  // CK 自动验证（如果上次有保存）
+  const ck0 = document.getElementById("ck").value.trim();
+  if (ck0) verifyCkNow(ck0);
+
   // 启动状态轮询
   startSnapshotPolling();
   startLogPolling();
 });
+
+// ─── CK 验证 / HAR 导入 ────────────────────────
+let _verifyCkTimer = null;
+
+function verifyCkSoon() {
+  // textarea blur 时触发，debounce 600ms 防止误触发
+  if (_verifyCkTimer) clearTimeout(_verifyCkTimer);
+  _verifyCkTimer = setTimeout(() => {
+    const ck = document.getElementById("ck").value.trim();
+    if (ck) verifyCkNow(ck);
+  }, 600);
+}
+
+async function verifyCkNow(ck) {
+  setCkStatus("checking", "🔄 验证 CK 中...");
+  try {
+    const res = await pywebview.api.verify_ck(ck);
+    if (res.ok) {
+      setCkStatus("valid", `✅ CK 有效 · memberId=${res.member_id || "?"}`);
+    } else {
+      const info = classifyError(res.error || "未知");
+      setCkStatus("invalid", `${info.icon} ${info.title} · 点上方"📁 从 HAR 导入 CK"换一个`);
+    }
+  } catch (e) {
+    setCkStatus("invalid", `验证异常: ${e}`);
+  }
+}
+
+function setCkStatus(level, text) {
+  const box = document.getElementById("ck-status");
+  if (!box) return;
+  box.className = "ck-status " + level;
+  box.textContent = text;
+}
+
+async function importCkFromHar() {
+  setCkStatus("checking", "🔄 选 HAR 文件中...");
+  try {
+    const res = await pywebview.api.import_ck_from_har();
+    if (!res.ok) {
+      if (res.error === "已取消") {
+        // 还原到上次状态：如果 ck 框有值就再验证一次，否则隐藏徽章
+        const ck = document.getElementById("ck").value.trim();
+        if (ck) verifyCkNow(ck);
+        else document.getElementById("ck-status").classList.add("hidden");
+        return;
+      }
+      setCkStatus("invalid", `❌ 导入失败: ${res.error}`);
+      return;
+    }
+    // 成功，填进 textarea + 立即验证
+    const ta = document.getElementById("ck");
+    ta.value = res.ck;
+    flashOk(ta);
+    showFeedback(`✅ 从 HAR 抽出 CK（${res.ck.length} 字符）· 验证中...`, "success");
+    verifyCkNow(res.ck);
+  } catch (e) {
+    setCkStatus("invalid", `导入异常: ${e}`);
+  }
+}
 
 function hydrateForm(data) {
   for (const [k, v] of Object.entries(data)) {

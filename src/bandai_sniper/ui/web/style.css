@@ -730,6 +730,38 @@ button:disabled {
 .har-product-status-pending { color: var(--char-pink); }
 .har-product-status-ended { color: var(--ash); text-decoration: line-through; }
 
+/* ═══ CK 状态徽章 ═══ */
+.ck-status {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ck-status.hidden { display: none; }
+
+.ck-status.checking {
+  background: rgba(17, 61, 110, 0.08);
+  color: var(--gundam-blue);
+  border-left: 3px solid var(--gundam-blue);
+}
+
+.ck-status.valid {
+  background: rgba(247, 210, 0, 0.12);
+  color: var(--ink);
+  border-left: 3px solid var(--gundam-yellow);
+}
+
+.ck-status.invalid {
+  background: rgba(232, 106, 140, 0.12);
+  color: var(--dark-crimson);
+  border-left: 3px solid var(--char-pink);
+  font-weight: 600;
+}
+
 .har-product-name {
   font-size: 13px;
   color: var(--ink);
