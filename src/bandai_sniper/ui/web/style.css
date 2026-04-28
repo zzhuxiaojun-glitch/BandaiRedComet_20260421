@@ -762,6 +762,19 @@ button:disabled {
   font-weight: 600;
 }
 
+/* 时区不一致警告 */
+.tz-warn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  background: rgba(247, 210, 0, 0.15);
+  border-left: 3px solid var(--gundam-yellow);
+  color: var(--ink);
+}
+
+.tz-warn.hidden { display: none; }
+
 .har-product-name {
   font-size: 13px;
   color: var(--ink);

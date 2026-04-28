@@ -155,8 +155,10 @@ function collectForm() {
     // 文本：保留空字符串（不转 null），避免后端 pydantic 报 NoneType 错
     else out[id] = el.value || "";
   }
-  // 默认 timezone
-  out.timezone = "Asia/Shanghai";
+  // 用系统真实时区（朋友在中国默认 Asia/Shanghai，你在日本是 Asia/Tokyo）。
+  // 万代服务器按北京时间公布开抢窗口；用户负责保证「填的开抢时间」和
+  // 系统时钟一致即可。
+  out.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
   return out;
 }
 
@@ -366,6 +368,25 @@ function refreshNowHint() {
   const mi = String(now.getMinutes()).padStart(2, "0");
   const ss = String(now.getSeconds()).padStart(2, "0");
   el.textContent = `当前时间：${hh}:${mi}:${ss}`;
+
+  // 同步刷新真实系统时区到 #tz-hint，以及非北京时区的提醒
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "未知";
+  const tzEl = document.getElementById("tz-hint");
+  if (tzEl) tzEl.textContent = tz;
+  const warnEl = document.getElementById("tz-warn");
+  if (warnEl) {
+    if (tz !== "Asia/Shanghai" && tz !== "Asia/Hong_Kong") {
+      // 万代官方按北京时间公布开抢窗口，用户系统时区不一致时提醒
+      const offsetMin = -now.getTimezoneOffset();   // 你的本地时区 vs UTC 的分钟偏移
+      const beijingOffsetMin = 8 * 60;
+      const diffH = (offsetMin - beijingOffsetMin) / 60;
+      const diffStr = diffH > 0 ? `+${diffH}` : `${diffH}`;
+      warnEl.textContent = `⚠️ 你系统时区是 ${tz}（与北京 ${diffStr}h），万代按北京时间开抢，请按系统时区换算后填入`;
+      warnEl.classList.remove("hidden");
+    } else {
+      warnEl.classList.add("hidden");
+    }
+  }
 }
 
 async function startSnipe() {
