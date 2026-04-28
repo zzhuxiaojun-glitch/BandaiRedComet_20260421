@@ -46,6 +46,10 @@ window.addEventListener("pywebviewready", async () => {
     input.value = t.toISOString().slice(0, 19);
   }
 
+  // 设 min = 当前时间（让浏览器原生标灰过去时间），每 30 秒刷新一次
+  refreshSnipeTimeMin();
+  setInterval(refreshSnipeTimeMin, 30 * 1000);
+
   // SPU URL 自动识别
   wireSpuAutoParse();
 
@@ -141,7 +145,8 @@ function collectForm() {
     if (!el) continue;
     if (el.type === "checkbox") out[id] = el.checked;
     else if (el.type === "number") out[id] = el.value ? Number(el.value) : null;
-    else out[id] = el.value || null;
+    // 文本：保留空字符串（不转 null），避免后端 pydantic 报 NoneType 错
+    else out[id] = el.value || "";
   }
   // 默认 timezone
   out.timezone = "Asia/Shanghai";
@@ -306,12 +311,43 @@ async function testNotify() {
   }
 }
 
+// datetime-local 把 min 设成当前时间，浏览器会标灰过去日期/时间
+function refreshSnipeTimeMin() {
+  const input = document.getElementById("snipe_time");
+  if (!input) return;
+  const now = new Date();
+  // 写本地时区（datetime-local 不带 TZ）
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  input.min = `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
 async function startSnipe() {
   const form = collectForm();
   // 最小校验
   if (!form.ck) return showFeedback("请先填 CK", "error");
   if (!form.spu_id || !form.sku_id) return showFeedback("请填完整 SPU / SKU", "error");
   if (!form.snipe_time) return showFeedback("请选开抢时间", "error");
+
+  // 检查开抢时间是否已过 / 太近（少于 10 秒不允许）
+  const targetMs = new Date(form.snipe_time).getTime();
+  if (isNaN(targetMs)) return showFeedback("开抢时间格式不对，请用日期选择器选", "error");
+  const diff = (targetMs - Date.now()) / 1000;
+  if (diff < -5) {
+    return showFeedback(
+      `⏰ 开抢时间已过去 ${Math.round(-diff)} 秒，请重选未来时间`,
+      "error",
+    );
+  }
+  if (diff < 10) {
+    return showFeedback(
+      `⏰ 开抢时间太近（剩 ${Math.round(diff)} 秒），最少留 10 秒预热时间`,
+      "error",
+    );
+  }
 
   // 保存表单
   try { await pywebview.api.save_form(form); } catch(e) {}
@@ -599,7 +635,43 @@ async function openWechat() {
 
 function showHelp(topic) {
   if (topic === "ck") {
-    alert("CK 获取方式：\n\n1) 使用朋友给的「万代上号小程序抓Token.exe」\n   ↳ 连上微信小程序 → 工具窗口会显示 Token\n\n2) 或按文档 10_使用指南.md §10.2 自己抓包");
+    alert([
+      "CK 获取方式：",
+      "",
+      "方式 A · 推荐：从抓的 HAR 一键导入",
+      "  1. 按文档 3_抓包指南 抓一次 HAR",
+      "  2. 点上方「📁 从 HAR 导入 CK」",
+      "",
+      "方式 B：朋友给的「万代上号小程序抓Token.exe」",
+      "  连上微信小程序 → 工具窗口会显示 Token，复制粘进 CK 框",
+      "",
+      "方式 C：自己 mitmproxy 抓包后从 HAR 找 api-access-token header",
+    ].join("\n"));
+  } else if (topic === "notify") {
+    alert([
+      "推送通道获取教程：",
+      "",
+      "🟢 Server 酱（推荐 · 微信公众号推送）",
+      "  1. 浏览器打开 https://sct.ftqq.com/",
+      "  2. 用 GitHub 登录",
+      "  3. 微信扫码关注「方糖气球」公众号",
+      "  4. 在网站「SendKey」页面复制 SCTKEY（一串字母数字）",
+      "  5. 粘到这里 → 点「试发」→ 微信里收到推送 = 成功",
+      "  抢中后推送会出现在微信「服务通知」里。",
+      "",
+      "🍎 Bark（iOS 用户）",
+      "  1. App Store 装 Bark",
+      "  2. 打开 App，复制顶部那条专属推送 URL",
+      "  3. 粘到这里",
+      "",
+      "💼 飞书机器人",
+      "  1. 飞书拉一个群（自己一个人也行）",
+      "  2. 群设置 → 群机器人 → 添加 → 自定义机器人",
+      "  3. 复制 Webhook URL 粘到这里",
+      "",
+      "❓ 想要 QQ 推送？",
+      "  目前没集成，需求强烈的话 v0.3.0 加 PushPlus 通道（同时支持微信+QQ）",
+    ].join("\n"));
   }
 }
 

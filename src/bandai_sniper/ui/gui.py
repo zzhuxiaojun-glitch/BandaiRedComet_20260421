@@ -417,47 +417,103 @@ class Api:
     # ───────────── 内部 ─────────────
 
     def _dict_to_config(self, d: dict) -> Config:
-        """把前端 JSON 转成 Config pydantic 模型。"""
+        """把前端 JSON 转成 Config pydantic 模型。
+
+        所有 Optional 字段做 None → "" / 默认值的标准化，
+        防止前端送进来的 null 触发 pydantic NoneType 报错。
+        """
+        from pydantic import ValidationError
+
         tz = d.get("timezone") or "Asia/Shanghai"
         st_raw = d.get("snipe_time")
-        if isinstance(st_raw, str):
-            # 前端 datetime-local 格式：2026-05-10T20:00
+        if not st_raw or not isinstance(st_raw, str):
+            raise ValueError("开抢时间未填或格式不对")
+        try:
             snipe_time = datetime.fromisoformat(st_raw).replace(tzinfo=ZoneInfo(tz))
-        else:
-            raise ValueError("snipe_time 未填")
+        except Exception:
+            raise ValueError(f"开抢时间格式不对: {st_raw!r}")
 
+        # 全部字段防御性归一：None → 默认值 / 空字符串
         raw = {
-            "ck": d["ck"],
+            "ck": (d.get("ck") or "").strip(),
             "timezone": tz,
             "snipe_time": snipe_time,
             "target": {
-                "spu_id": str(d["spu_id"]),
-                "sku_id": str(d["sku_id"]),
-                "num": int(d.get("num", 1)),
-                "address_id": str(d["address_id"]) if d.get("address_id") else None,
-                "price_ceiling": float(d.get("price_ceiling", 99999)),
+                "spu_id": str(d.get("spu_id") or "").strip(),
+                "sku_id": str(d.get("sku_id") or "").strip(),
+                "num": int(d.get("num") or 1),
+                "address_id": str(d["address_id"]).strip() if d.get("address_id") else None,
+                "price_ceiling": float(d.get("price_ceiling") or 99999),
             },
             "strategy": {
-                "pre_warmup_seconds": int(d.get("pre_warmup_seconds", 60)),
-                "lead_ms": int(d.get("lead_ms", 5)),
-                "max_retries": int(d.get("max_retries", 8)),
-                "concurrency": int(d.get("concurrency", 3)),
-                "retry_backoff_ms": int(d.get("retry_backoff_ms", 50)),
+                "pre_warmup_seconds": int(d.get("pre_warmup_seconds") or 60),
+                "lead_ms": int(d.get("lead_ms") or 5),
+                "max_retries": int(d.get("max_retries") or 8),
+                "concurrency": int(d.get("concurrency") or 3),
+                "retry_backoff_ms": int(d.get("retry_backoff_ms") or 50),
                 "poll_stock": bool(d.get("poll_stock", True)),
-                "poll_stock_interval_ms": int(d.get("poll_stock_interval_ms", 150)),
-                "max_early_fire_ms": int(d.get("max_early_fire_ms", 2000)),
+                "poll_stock_interval_ms": int(d.get("poll_stock_interval_ms") or 150),
+                "max_early_fire_ms": int(d.get("max_early_fire_ms") or 2000),
             },
             "notify": {
                 "enabled": bool(d.get("notify_enabled", False)),
-                "provider": d.get("notify_provider", "none"),
-                "token": d.get("notify_token", ""),
+                "provider": (d.get("notify_provider") or "none"),
+                "token": (d.get("notify_token") or ""),  # 关键：防 None
             },
             "log": {
-                "level": d.get("log_level", "INFO"),
-                "dir": d.get("log_dir", "./logs"),
+                "level": d.get("log_level") or "INFO",
+                "dir": d.get("log_dir") or "./logs",
             },
         }
-        return Config.model_validate(raw)
+        try:
+            return Config.model_validate(raw)
+        except ValidationError as ve:
+            raise ValueError(_humanize_validation_error(ve))
+
+
+# 字段路径 → 中文名字 映射
+_FIELD_LABEL = {
+    "ck": "CK",
+    "snipe_time": "开抢时间",
+    "target.spu_id": "SPU ID",
+    "target.sku_id": "SKU",
+    "target.num": "数量",
+    "target.address_id": "地址",
+    "target.price_ceiling": "价格护栏",
+    "strategy.pre_warmup_seconds": "提前对时秒数",
+    "strategy.lead_ms": "提前 fire 毫秒",
+    "strategy.max_retries": "最大重试",
+    "strategy.concurrency": "并发数",
+    "notify.token": "通知 token",
+    "notify.provider": "通知通道",
+}
+
+
+def _humanize_validation_error(err) -> str:
+    """pydantic ValidationError → 中文人话清单。"""
+    lines = []
+    for e in err.errors():
+        loc = ".".join(str(x) for x in e.get("loc", []))
+        label = _FIELD_LABEL.get(loc, loc)
+        msg = e.get("msg", "")
+        # 常见 message 翻译
+        m_lower = msg.lower()
+        if "should be a valid string" in m_lower:
+            human = "应为字符串"
+        elif "should be a valid integer" in m_lower:
+            human = "应为整数"
+        elif "should be a valid number" in m_lower:
+            human = "应为数字"
+        elif "should be a valid datetime" in m_lower:
+            human = "时间格式不对"
+        elif "field required" in m_lower or "missing" in m_lower:
+            human = "未填"
+        elif "ck 未填写" in msg or "PASTE_" in msg:
+            human = "CK 未填写或仍是占位符"
+        else:
+            human = msg
+        lines.append(f"  • {label}: {human}")
+    return "配置有误：\n" + "\n".join(lines)
 
 
 def launch() -> None:
