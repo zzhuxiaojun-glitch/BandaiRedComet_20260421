@@ -46,9 +46,16 @@ window.addEventListener("pywebviewready", async () => {
     input.value = t.toISOString().slice(0, 19);
   }
 
-  // 设 min = 当前时间（让浏览器原生标灰过去时间），每 30 秒刷新一次
+  // 设 min = 当前时间（让浏览器原生标灰过去日期），每 30 秒刷新一次
   refreshSnipeTimeMin();
   setInterval(refreshSnipeTimeMin, 30 * 1000);
+
+  // 自动校正过去时间：选了已过去的时刻立即弹回当前 + 1 分钟
+  document.getElementById("snipe_time").addEventListener("change", autoCorrectSnipeTime);
+
+  // 输入框下显示当前实时时间（每秒刷新）作为参考
+  refreshNowHint();
+  setInterval(refreshNowHint, 1000);
 
   // SPU URL 自动识别
   wireSpuAutoParse();
@@ -323,6 +330,42 @@ function refreshSnipeTimeMin() {
   const hh = String(now.getHours()).padStart(2, "0");
   const mi = String(now.getMinutes()).padStart(2, "0");
   input.min = `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
+// datetime-local 的 native picker 不会灰显已过去的时分（只灰日期）。
+// 选完时如果落在过去，立刻弹回当前 + 1 分钟，避免提交时再失败。
+function autoCorrectSnipeTime() {
+  const input = document.getElementById("snipe_time");
+  if (!input || !input.value) return;
+  const t = new Date(input.value).getTime();
+  if (isNaN(t)) return;
+  const now = Date.now();
+  if (t < now) {
+    const next = new Date(now + 60 * 1000);
+    input.value = formatDatetimeLocal(next);
+    showFeedback("⏰ 选了过去的时刻，已自动调到当前 +1 分钟", "info");
+  }
+}
+
+function formatDatetimeLocal(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}`;
+}
+
+// 实时显示当前时间，给用户对比 snipe_time 的参考
+function refreshNowHint() {
+  const el = document.getElementById("now-hint");
+  if (!el) return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  el.textContent = `当前时间：${hh}:${mi}:${ss}`;
 }
 
 async function startSnipe() {

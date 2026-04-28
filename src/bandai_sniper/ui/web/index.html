@@ -110,7 +110,11 @@
       <label class="field">
         <input type="datetime-local" id="snipe_time" step="1">
       </label>
-      <div class="hint">本地时区：<span id="tz-hint">Asia/Shanghai</span></div>
+      <div class="hint">
+        <span id="now-hint">当前时间：--:--:--</span>
+        · 本地时区 <span id="tz-hint">Asia/Shanghai</span>
+        · 选过去时刻会自动跳到当前 +1 分钟
+      </div>
     </div>
 
     <!-- 高级选项（可折叠） -->
