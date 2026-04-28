@@ -53,6 +53,7 @@ class Snapshot:
     product: Optional[dict] = None      # precheck 结果：nameCn/price/stock/saleStatus
     addresses: list[dict] = field(default_factory=list)
     pinned_address_id: Optional[str] = None
+    fire_duration_ms: Optional[int] = None  # 触发→抢到/失败的耗时
 
 
 class SnipeSession:
@@ -118,6 +119,7 @@ class SnipeSession:
                 "product": s.product,
                 "addresses": list(s.addresses),
                 "pinned_address_id": s.pinned_address_id,
+                "fire_duration_ms": s.fire_duration_ms,
             }
 
     def _update(self, **kw: Any) -> None:
@@ -135,6 +137,7 @@ class SnipeSession:
             phase_msg="准备中...",
             error=None,
             pay_params=None,
+            fire_duration_ms=None,
         )
 
         def _run():
@@ -166,10 +169,20 @@ class SnipeSession:
 
             await sniper.countdown()
             self._update(state=State.FIRING, phase_msg="下单中")
-            pay = await sniper.fire()
+
+            # 触发→抢到/失败 都计时（用 monotonic 不受系统时钟跳变影响）
+            import time as _time
+            fire_start = _time.monotonic()
+            try:
+                pay = await sniper.fire()
+            except Exception:
+                self._update(fire_duration_ms=int((_time.monotonic() - fire_start) * 1000))
+                raise
+            fire_ms = int((_time.monotonic() - fire_start) * 1000)
             self._update(
                 state=State.SUCCESS,
                 phase_msg="抢单成功",
+                fire_duration_ms=fire_ms,
                 pay_params={
                     "order_id": pay.order_id,
                     "prepay_id": pay.prepay_id,

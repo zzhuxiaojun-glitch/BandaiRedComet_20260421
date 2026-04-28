@@ -457,7 +457,27 @@ button:disabled {
   text-shadow: 0 2px 0 var(--dark-crimson);
   font-size: 36px;
   letter-spacing: 6px;
-  margin-bottom: 20px;
+  margin-bottom: 8px;
+}
+
+/* 触发→结果 耗时标签（成功 / 失败 视图共用）*/
+.duration-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 14px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--ink);
+  color: var(--gundam-yellow);
+  margin-bottom: 16px;
+}
+
+.duration-badge:empty { display: none; }
+
+#failed-duration {
+  background: var(--dark-crimson);
+  color: var(--gundam-white);
 }
 
 .pay-info {

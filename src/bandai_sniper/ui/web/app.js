@@ -521,20 +521,28 @@ function applySnapshot(s) {
   } else if (st === "success") {
     if (currentView !== "success") switchView("success");
     stopCountdown();
-    renderSuccess(s.pay_params || {});
+    renderSuccess(s.pay_params || {}, s.fire_duration_ms);
   } else if (st === "failed" || st === "stopped") {
     if (currentView !== "failed") switchView("failed");
     stopCountdown();
-    renderFailure(s.error || s.phase_msg || "未知错误");
+    renderFailure(s.error || s.phase_msg || "未知错误", s.fire_duration_ms);
   }
   // 阶段文案
   const pl = document.getElementById("phase-label");
   if (pl) pl.textContent = s.phase_msg || "";
 }
 
-function renderSuccess(pay) {
+function formatDuration(ms) {
+  if (ms == null || ms < 0) return "";
+  if (ms < 1000) return `⏱️ 用时 ${ms} ms`;
+  return `⏱️ 用时 ${(ms / 1000).toFixed(2)} s`;
+}
+
+function renderSuccess(pay, durationMs) {
   document.getElementById("order-id").textContent = pay.order_id || "(未知)";
   document.getElementById("prepay-id").textContent = pay.prepay_id || "(未知)";
+  const badge = document.getElementById("success-duration");
+  if (badge) badge.textContent = formatDuration(durationMs);
 }
 
 // ─── 错误分类 ──────────────────────────────
@@ -622,7 +630,7 @@ function classifyError(raw) {
   return { icon: "⚠️", sev: "error", title: "异常", hint: "未分类错误，展开看原始报错。", raw: s };
 }
 
-function renderFailure(raw) {
+function renderFailure(raw, durationMs) {
   const info = classifyError(raw);
   const card = document.getElementById("error-card");
   card.classList.remove("sev-error", "sev-warning", "sev-info");
@@ -631,6 +639,8 @@ function renderFailure(raw) {
   document.getElementById("err-title").textContent = info.title;
   document.getElementById("err-hint").textContent = info.hint;
   document.getElementById("error-msg").textContent = info.raw || "(无详细)";
+  const badge = document.getElementById("failed-duration");
+  if (badge) badge.textContent = formatDuration(durationMs);
 }
 
 // ─── 日志轮询 ──────────────────────────────
