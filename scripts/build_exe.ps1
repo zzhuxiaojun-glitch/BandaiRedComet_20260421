@@ -1,4 +1,4 @@
-# 万代抢购器 · Windows exe 打包脚本
+﻿# 万代抢购器 · Windows exe 打包脚本
 # 用法：在项目根目录的 PowerShell 里跑
 #   .\scripts\build_exe.ps1
 #
@@ -57,18 +57,33 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# ─── 完成报告 ───
-$ExePath = Join-Path $ProjectRoot "dist\万代抢购器.exe"
+# ─── 完成报告（onedir 模式：dist\万代抢购器\万代抢购器.exe）───
+$ExeDir  = Join-Path $ProjectRoot "dist\万代抢购器"
+$ExePath = Join-Path $ExeDir "万代抢购器.exe"
+
 if (Test-Path $ExePath) {
-    $size = (Get-Item $ExePath).Length / 1MB
+    $dirSize = (Get-ChildItem $ExeDir -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
     Write-Host ""
     Write-Host "═══════════════════════════════════════" -ForegroundColor Green
     Write-Host "  ✅ 打包成功" -ForegroundColor Green
     Write-Host "═══════════════════════════════════════" -ForegroundColor Green
-    Write-Host "  输出：$ExePath"
-    Write-Host ("  大小：{0:N1} MB" -f $size)
-    Write-Host "  双击启动，或在资源管理器打开。"
+    Write-Host "  输出目录：$ExeDir"
+    Write-Host "  主 exe ：$ExePath"
+    Write-Host ("  目录总大小：{0:N1} MB" -f $dirSize)
+    Write-Host ""
+    Write-Host "  双击 exe 启动 · 给朋友前先 zip 整个目录"
+
+    # ─── 顺手打 zip 给朋友（覆盖旧的）───
+    $ZipPath = Join-Path $ProjectRoot "dist\万代抢购器.zip"
+    Write-Host ""
+    Write-Host "[5/4] 顺手 zip 打包..." -ForegroundColor Yellow
+    if (Test-Path $ZipPath) { Remove-Item $ZipPath }
+    Compress-Archive -Path $ExeDir -DestinationPath $ZipPath -CompressionLevel Optimal
+    if (Test-Path $ZipPath) {
+        $zipSize = (Get-Item $ZipPath).Length / 1MB
+        Write-Host ("    ✓ zip：$ZipPath（{0:N1} MB）" -f $zipSize) -ForegroundColor Green
+    }
     Write-Host ""
 } else {
-    Write-Host "⚠️  打包完成但找不到 dist\万代抢购器.exe" -ForegroundColor Yellow
+    Write-Host "⚠️  打包完成但找不到 $ExePath" -ForegroundColor Yellow
 }

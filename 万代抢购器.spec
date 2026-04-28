@@ -72,25 +72,36 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# ─── onedir 模式：dist/万代抢购器/ 目录里有 .exe + 一堆 .dll/.pyd ───
+# 优势：启动快（< 1 秒，不用解压临时目录）、调试友好（能看到包了哪些文件）
+# 代价：分发要打成 zip。给朋友先压一个 zip 即可。
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,       # 关键：onedir 模式 binaries 走 COLLECT
     name="万代抢购器",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,                  # UPX 压缩有时触发杀毒，先关
-    runtime_tmpdir=None,
-    console=False,              # windowed：不弹 cmd 黑窗
+    upx=False,                   # UPX 压缩有时触发杀毒，先关
+    console=False,               # windowed：不弹 cmd 黑窗
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon=str(icon_path) if icon_path.exists() else None,
-    version=None,               # 后续可加 version_info.txt
+    version=None,                # 后续可加 version_info.txt
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="万代抢购器",            # 输出目录名
 )

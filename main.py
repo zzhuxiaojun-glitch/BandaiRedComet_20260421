@@ -27,12 +27,14 @@ def _setup_logger() -> None:
     log_dir = _resolve_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     logger.remove()
-    # stderr 显示：打包后 windowed 模式没 stderr，无害
-    logger.add(
-        sys.stderr,
-        level="INFO",
-        format="<green>{time:HH:mm:ss.SSS}</green> <level>{level:<7}</level> {message}",
-    )
+    # PyInstaller --windowed 模式下 sys.stderr 是 None，loguru 不接受 None
+    # 所以只在 stderr 有效时加这个 sink；exe 用户看不到这条，看 log 文件
+    if sys.stderr is not None:
+        logger.add(
+            sys.stderr,
+            level="INFO",
+            format="<green>{time:HH:mm:ss.SSS}</green> <level>{level:<7}</level> {message}",
+        )
     logger.add(
         log_dir / "gui_{time:YYYYMMDD_HHmmss}.log",
         level="DEBUG",
