@@ -51,7 +51,7 @@ window.addEventListener("pywebviewready", async () => {
   setInterval(refreshSnipeTimeMin, 30 * 1000);
 
   // 自动校正过去时间：选了已过去的时刻立即弹回当前 + 1 分钟
-  document.getElementById("snipe_time").addEventListener("change", autoCorrectSnipeTime);
+  document.getElementById("snipe_time").addEventListener("change", onSnipeTimeChange);
 
   // 输入框下显示当前实时时间（每秒刷新）作为参考
   refreshNowHint();
@@ -335,16 +335,25 @@ function refreshSnipeTimeMin() {
 }
 
 // datetime-local 的 native picker 不会灰显已过去的时分（只灰日期）。
-// 选完时如果落在过去，立刻弹回当前 + 1 分钟，避免提交时再失败。
+// 选完时如果落在过去，立刻弹回当前 + 1 分钟。
+// 返回 true 表示这次确实改了 input.value（startSnipe 会用它判断是否中断）。
 function autoCorrectSnipeTime() {
   const input = document.getElementById("snipe_time");
-  if (!input || !input.value) return;
+  if (!input || !input.value) return false;
   const t = new Date(input.value).getTime();
-  if (isNaN(t)) return;
+  if (isNaN(t)) return false;
   const now = Date.now();
   if (t < now) {
     const next = new Date(now + 60 * 1000);
     input.value = formatDatetimeLocal(next);
+    return true;
+  }
+  return false;
+}
+
+// change 事件的处理函数：调 autoCorrect，根据返回值决定 toast
+function onSnipeTimeChange() {
+  if (autoCorrectSnipeTime()) {
     showFeedback("⏰ 选了过去的时刻，已自动调到当前 +1 分钟", "info");
   }
 }
@@ -390,6 +399,16 @@ function refreshNowHint() {
 }
 
 async function startSnipe() {
+  // 兜底：强制再校正一次过去时间
+  // （change 事件在某些时序下可能没及时 fire；用户敲键盘 + 立即点抢购等情况）
+  if (autoCorrectSnipeTime()) {
+    showFeedback(
+      "⏰ 开抢时间已过去，自动调到当前 +1 分钟。请确认时间后再次点「开始抢购」",
+      "warning",
+    );
+    return;
+  }
+
   const form = collectForm();
   // 最小校验
   if (!form.ck) return showFeedback("请先填 CK", "error");
@@ -398,9 +417,15 @@ async function startSnipe() {
 
   // 检查开抢时间是否已过 / 太近（少于 10 秒不允许）
   const targetMs = new Date(form.snipe_time).getTime();
-  if (isNaN(targetMs)) return showFeedback("开抢时间格式不对，请用日期选择器选", "error");
+  if (isNaN(targetMs)) {
+    return showFeedback(
+      `开抢时间无法解析，原始值 "${form.snipe_time}"。请重新用日期选择器选`,
+      "error",
+    );
+  }
   const diff = (targetMs - Date.now()) / 1000;
   if (diff < -5) {
+    // 走到这一步说明 autoCorrect 也没救（理论不该发生）
     return showFeedback(
       `⏰ 开抢时间已过去 ${Math.round(-diff)} 秒，请重选未来时间`,
       "error",
