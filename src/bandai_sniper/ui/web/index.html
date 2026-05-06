@@ -55,6 +55,16 @@
           <input type="text" id="search_keyword" placeholder="输入商品名 · 例：里歇尔 / 高达 / 海贼王" onkeypress="if(event.key==='Enter') searchProducts()">
           <button class="btn-secondary" onclick="searchProducts()">🔍 搜索</button>
         </div>
+        <div class="auto-poll-row">
+          <label class="inline-check">
+            <input type="checkbox" id="auto_poll_enabled" onchange="toggleAutoPoll()">
+            没搜到时自动轮询
+          </label>
+          <span class="auto-poll-interval">
+            每 <input type="number" id="auto_poll_interval" value="15" min="5" max="120"> 秒
+          </span>
+          <span id="auto-poll-status" class="auto-poll-status"></span>
+        </div>
         <div class="hint">实时调万代搜索接口 · 需要先填好 ① 账号 CK</div>
       </label>
 

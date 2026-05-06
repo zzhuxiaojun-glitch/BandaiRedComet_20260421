@@ -167,6 +167,44 @@ code, .mono, .countdown {
   margin: 0 !important;
 }
 
+/* 自动轮询搜索控件（搜索框下方）*/
+.auto-poll-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ash);
+  flex-wrap: wrap;
+}
+
+.auto-poll-interval {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.auto-poll-interval input[type="number"] {
+  width: 56px !important;
+  padding: 2px 6px !important;
+  font-size: 11px;
+  text-align: center;
+}
+
+.auto-poll-status {
+  flex: 1;
+  font-weight: 500;
+}
+
+.auto-poll-status.running {
+  color: var(--gundam-blue);
+}
+
+.auto-poll-status.hit {
+  color: var(--gundam-yellow);
+  font-weight: 700;
+}
+
 input[type="text"],
 input[type="number"],
 input[type="datetime-local"],

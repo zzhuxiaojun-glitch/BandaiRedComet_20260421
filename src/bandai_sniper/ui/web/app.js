@@ -478,6 +478,10 @@ function switchView(name) {
   const el = document.getElementById("view-" + name);
   if (el) el.classList.add("active");
   currentView = name;
+  // 离开表单视图（用户开抢 / 抢中 / 失败 / etc）→ 停掉自动轮询
+  if (name !== "form" && autoPollTimer) {
+    stopAutoPoll();
+  }
 }
 
 // ─── 倒计时 ──────────────────────────────
@@ -776,6 +780,120 @@ function showHelp(topic) {
       "  2. 群设置 → 群机器人 → 添加 → 自定义机器人",
       "  3. 复制 Webhook URL 粘到这里",
     ].join("\n"));
+  }
+}
+
+// ─── 自动轮询搜索（关键词命中前每 N 秒搜一次） ────────────
+let autoPollTimer = null;
+let autoPollLastTotal = 0;
+let autoPollKeyword = "";
+
+function setAutoPollStatus(text, level = "running") {
+  const el = document.getElementById("auto-poll-status");
+  if (!el) return;
+  el.className = "auto-poll-status " + level;
+  el.textContent = text || "";
+}
+
+function toggleAutoPoll() {
+  if (document.getElementById("auto_poll_enabled").checked) {
+    startAutoPoll();
+  } else {
+    stopAutoPoll("已手动关闭");
+  }
+}
+
+function startAutoPoll() {
+  const ck = document.getElementById("ck").value.trim();
+  if (!ck) {
+    showFeedback("请先填 CK", "error");
+    document.getElementById("auto_poll_enabled").checked = false;
+    return;
+  }
+  const kw = document.getElementById("search_keyword").value.trim();
+  if (!kw) {
+    showFeedback("请输入关键词后再开自动轮询", "error");
+    document.getElementById("auto_poll_enabled").checked = false;
+    return;
+  }
+
+  let interval = parseInt(document.getElementById("auto_poll_interval").value) || 15;
+  interval = Math.max(5, Math.min(120, interval));
+
+  autoPollKeyword = kw;
+  autoPollLastTotal = -1;  // -1 = 未跑过；首次跑出来无论 0 还是 N，都不算"新增"
+
+  // 请求桌面通知权限（首次会弹原生授权框）
+  if (typeof Notification !== "undefined" && Notification.permission === "default") {
+    try { Notification.requestPermission(); } catch (e) {}
+  }
+
+  setAutoPollStatus(`🔁 轮询「${kw}」每 ${interval}s 一次...`);
+  pollSearchOnce();   // 立即跑一次基线
+  autoPollTimer = setInterval(pollSearchOnce, interval * 1000);
+}
+
+function stopAutoPoll(reason = "") {
+  if (autoPollTimer) {
+    clearInterval(autoPollTimer);
+    autoPollTimer = null;
+  }
+  document.getElementById("auto_poll_enabled").checked = false;
+  if (reason) setAutoPollStatus(reason, "running");
+  else setAutoPollStatus("");
+}
+
+async function pollSearchOnce() {
+  if (!autoPollKeyword) return;
+  const ck = document.getElementById("ck").value.trim();
+  if (!ck) {
+    stopAutoPoll("CK 已空，停止");
+    return;
+  }
+  try {
+    const res = await pywebview.api.search_products(ck, autoPollKeyword);
+    if (!res.ok) {
+      stopAutoPoll(`错误：${res.error || "未知"}`);
+      return;
+    }
+    const total = res.total || 0;
+    const now = new Date();
+    const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+    if (autoPollLastTotal < 0) {
+      // 首次：建立基线
+      autoPollLastTotal = total;
+      setAutoPollStatus(`🔁 ${ts} 基线 ${total} 个 · 等新商品...`);
+      return;
+    }
+
+    if (total > autoPollLastTotal) {
+      // 命中！
+      const delta = total - autoPollLastTotal;
+      stopAutoPoll(`🎯 ${ts} 发现 ${delta} 个新商品（共 ${total}）`);
+      setAutoPollStatus(`🎯 ${ts} 发现 ${delta} 个新商品（共 ${total}）`, "hit");
+
+      // 桌面通知（如果 grant 了权限）
+      try {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification("万代抢购器 · 发现新商品", {
+            body: `「${autoPollKeyword}」搜到了 ${delta} 个新商品，回到 GUI 选商品下单`,
+            requireInteraction: true,
+          });
+        }
+      } catch (e) {}
+
+      // 弹 modal 显示结果
+      document.querySelector("#har-modal .modal-header h2").textContent = "🎯 自动轮询命中";
+      document.getElementById("har-modal-hint").textContent =
+        `搜「${autoPollKeyword}」自动轮询发现 ${total} 个商品 · 点一行填入`;
+      renderHarProducts(res.products, null);
+      document.getElementById("har-modal").classList.remove("hidden");
+    } else {
+      setAutoPollStatus(`🔁 ${ts} 还是 ${total} 个 · 继续等...`);
+    }
+  } catch (e) {
+    console.warn("auto poll error", e);
   }
 }
 
