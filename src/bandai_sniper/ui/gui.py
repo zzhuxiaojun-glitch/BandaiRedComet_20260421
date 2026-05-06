@@ -429,7 +429,14 @@ class Api:
         if not st_raw or not isinstance(st_raw, str):
             raise ValueError("开抢时间未填或格式不对")
         try:
-            snipe_time = datetime.fromisoformat(st_raw).replace(tzinfo=ZoneInfo(tz))
+            # 兼容 datetime-local 输出 'YYYY-MM-DDTHH:MM' 不带秒的情况：
+            # - Python 3.11+ fromisoformat 支持
+            # - Python 3.10 之前只支持完整 'YYYY-MM-DDTHH:MM:SS'
+            # 统一在解析前补全 ":00"，跨 Python 版本都能跑（v1.1 朋友 fork 的修）
+            normalized = st_raw.strip()
+            if len(normalized) == 16 and normalized[13] == ":":
+                normalized = normalized + ":00"
+            snipe_time = datetime.fromisoformat(normalized).replace(tzinfo=ZoneInfo(tz))
         except Exception:
             raise ValueError(f"开抢时间格式不对: {st_raw!r}")
 

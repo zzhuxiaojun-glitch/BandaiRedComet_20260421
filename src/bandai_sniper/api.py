@@ -183,8 +183,9 @@ class BandaiApi:
     ) -> dict:
         """关键词搜索商品（GUI "🔍 搜索" 按钮的后端入口）。
 
-        薄包装 query_spu，只暴露 keyword + 分页两个参数；其他细节
-        （只查可售 / 默认排序）走默认。
+        薄包装 query_spu。canBuy=0 不限状态：未开售 / 无货 / 已结束的商品
+        都会返回。抢购场景下用户经常需要搜"还没开抢"或"刚卖光"的商品来
+        预先锁定 SPU ID，所以不能 filter 掉。
         """
         if not keyword or not keyword.strip():
             return {"total": 0, "list": []}
@@ -192,7 +193,7 @@ class BandaiApi:
             search_text=keyword.strip(),
             page_num=page_num,
             page_size=page_size,
-            can_buy="1",
+            can_buy="0",
         )
 
     async def query_spu_simple(self, spu_id_list: list[str]) -> list[dict]:
