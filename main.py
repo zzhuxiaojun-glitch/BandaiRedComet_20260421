@@ -21,6 +21,41 @@ from pathlib import Path
 from loguru import logger
 
 
+def _check_ascii_path() -> None:
+    """检查 exe 所在路径是否含非 ASCII 字符。
+
+    pythonnet/clr_loader 的原生 DLL 用 ANSI API 处理路径，中文路径下会
+    "Failed to resolve Python.Runtime.Loader.Initialize"。打包后 frozen
+    才检查；开发时跳过（dev 路径可能也有中文，但 dev 下用的是系统 Python
+    + .venv，走的不是同一条加载链路）。
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    exe_dir = Path(sys.executable).parent
+    try:
+        str(exe_dir).encode("ascii")
+        return  # 全 ASCII，OK
+    except UnicodeEncodeError:
+        pass
+
+    msg = (
+        "无法在带中文/特殊字符的路径下启动。\n\n"
+        f"当前路径：\n{exe_dir}\n\n"
+        "请把整个【万代抢购器】文件夹剪切到纯英文路径再启动，例如：\n"
+        "  C:\\BandaiSniper\\\n"
+        "  D:\\Tools\\BandaiSniper\\\n\n"
+        "（这是 pythonnet 库的限制，不是程序 bug）"
+    )
+    # 用 ctypes 弹原生 MessageBox（不依赖任何 GUI 框架，避免触发 pythonnet）
+    try:
+        import ctypes
+        # MB_OK | MB_ICONERROR | MB_SYSTEMMODAL = 0x1010
+        ctypes.windll.user32.MessageBoxW(0, msg, "万代抢购器 · 启动失败", 0x1010)
+    except Exception:
+        pass
+    sys.exit(1)
+
+
 def _resolve_log_dir() -> Path:
     """打包后写到 exe 同级 logs/，开发时写 ./logs/。"""
     if getattr(sys, "frozen", False):
@@ -51,6 +86,7 @@ def _setup_logger() -> None:
 
 
 def main() -> None:
+    _check_ascii_path()  # 必须先于 setup_logger，logs 目录都还没建呢
     _setup_logger()
     logger.info("万代抢购器启动中...")
     # 注意：必须在 setup_logger 之后再 import，否则 ui/session.py 的 sink

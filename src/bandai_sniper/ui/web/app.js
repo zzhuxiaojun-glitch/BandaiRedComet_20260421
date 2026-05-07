@@ -196,10 +196,19 @@ async function runPrecheck() {
       addrSel.appendChild(opt);
     }
 
-    showFeedback(
-      `✅ 预检通过 · memberId=${res.member_id} · ${cachedAddresses.length} 个地址`,
-      "success"
-    );
+    // product.error 存在 = 详情接口失败（最常见 500：商品未上架）
+    if (p.error) {
+      const info = classifyError(p.error);
+      showFeedback(
+        `${info.icon} ${info.title} · CK + 地址 OK，但${info.hint}`,
+        info.sev === "error" ? "error" : "warning"
+      );
+    } else {
+      showFeedback(
+        `✅ 预检通过 · memberId=${res.member_id} · ${cachedAddresses.length} 个地址`,
+        "success"
+      );
+    }
 
     // 自动拉 SKU（silent：已有"预检通过"提示，不重复）
     fetchSkus({ silent: true });
@@ -219,6 +228,11 @@ async function fetchSkus(opts = {}) {
     const res = await pywebview.api.list_skus(ck, spuId);
     if (!res.ok) {
       // 常见：CK 过期返 302 → Api 层转成 {ok: false, error: "ApiError: [302] ..."}
+      // silent 模式（如 precheck 后自动拉 SKU）：错误只 console，不弹 toast 盖掉预检结果
+      if (opts.silent) {
+        console.warn("list_skus silent error:", res.error);
+        return;
+      }
       const info = classifyError(res.error || "");
       showFeedback(`${info.icon} ${info.title} · ${info.hint}`, "error");
       return;
@@ -236,7 +250,7 @@ async function fetchSkus(opts = {}) {
     }
   } catch (e) {
     console.warn("list_skus failed", e);
-    showFeedback("刷新 SKU 异常: " + e, "error");
+    if (!opts.silent) showFeedback("刷新 SKU 异常: " + e, "error");
   }
 }
 
@@ -616,6 +630,12 @@ const ERROR_CHECKS = [
     icon: "🕵️", sev: "error",
     title: "UA/Referer 被拒（432）",
     hint: "client.py 默认头应该带 User-Agent + Referer；确认没被改过。",
+  }],
+  // 万代对未上架商品 / 后端临时故障会直接返 500（不是优雅的业务错误码）
+  [/HTTPStatusError.*500|\b500.*Internal Server Error|Server error.*500/i, {
+    icon: "🕓", sev: "warning",
+    title: "商品可能还没上架",
+    hint: "万代对未上架商品的详情接口会直接返 500。不用纠结预检——配好后到点直接「开始抢购」即可，程序会自动重试。",
   }],
   [/(connect|read|pool).*timeout|ConnectError/i, {
     icon: "📡", sev: "info",
