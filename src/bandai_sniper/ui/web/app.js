@@ -39,11 +39,10 @@ window.addEventListener("pywebviewready", async () => {
     console.warn("load_saved failed", e);
   }
 
-  // 默认开抢时间 = 当前 +1 小时
+  // 默认开抢时间 = 当前 +1 小时（必须用本地时区格式化，否则 UTC+8 用户会看到 8 小时前的时间）
   const input = document.getElementById("snipe_time");
   if (!input.value) {
-    const t = new Date(Date.now() + 3600 * 1000);
-    input.value = t.toISOString().slice(0, 19);
+    input.value = formatDatetimeLocal(new Date(Date.now() + 3600 * 1000));
   }
 
   // 设 min = 当前时间（让浏览器原生标灰过去日期），每 30 秒刷新一次
