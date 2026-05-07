@@ -7,6 +7,7 @@ PyYAML>=6,<7
 click>=8.3,<9
 ntplib>=0.4,<1
 pywebview>=6.2,<7   # GUI
+tzdata>=2024.1      # Win 上 zoneinfo 必需（系统无 IANA 数据库）
 
 # 开发/测试依赖（生产不需要）
 # pytest>=9,<10

@@ -45,6 +45,8 @@ hidden = [
     "pydantic_core",
     # bottle (pywebview 内置 HTTP server)
     "bottle",
+    # tzdata：Win 上 zoneinfo 必需（系统无 IANA 数据库）
+    "tzdata",
 ]
 
 a = Analysis(

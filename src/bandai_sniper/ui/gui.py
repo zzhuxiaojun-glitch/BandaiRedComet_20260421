@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
 
@@ -428,17 +428,25 @@ class Api:
         st_raw = d.get("snipe_time")
         if not st_raw or not isinstance(st_raw, str):
             raise ValueError("开抢时间未填或格式不对")
+        # 兼容 datetime-local 输出 'YYYY-MM-DDTHH:MM' 不带秒的情况：
+        # - Python 3.11+ fromisoformat 支持
+        # - Python 3.10 之前只支持完整 'YYYY-MM-DDTHH:MM:SS'
+        # 统一在解析前补全 ":00"，跨 Python 版本都能跑（v1.1 朋友 fork 的修）
+        normalized = st_raw.strip()
+        if len(normalized) == 16 and normalized[13] == ":":
+            normalized = normalized + ":00"
         try:
-            # 兼容 datetime-local 输出 'YYYY-MM-DDTHH:MM' 不带秒的情况：
-            # - Python 3.11+ fromisoformat 支持
-            # - Python 3.10 之前只支持完整 'YYYY-MM-DDTHH:MM:SS'
-            # 统一在解析前补全 ":00"，跨 Python 版本都能跑（v1.1 朋友 fork 的修）
-            normalized = st_raw.strip()
-            if len(normalized) == 16 and normalized[13] == ":":
-                normalized = normalized + ":00"
-            snipe_time = datetime.fromisoformat(normalized).replace(tzinfo=ZoneInfo(tz))
-        except Exception:
+            naive = datetime.fromisoformat(normalized)
+        except (ValueError, TypeError):
             raise ValueError(f"开抢时间格式不对: {st_raw!r}")
+        # ZoneInfo 失败（Win 缺 tzdata 包等）单独 catch，避免误导成"格式不对"
+        try:
+            snipe_time = naive.replace(tzinfo=ZoneInfo(tz))
+        except ZoneInfoNotFoundError:
+            raise ValueError(
+                f"找不到时区数据 {tz!r}（缺 tzdata 包）。"
+                "请重新打包 exe（requirements.txt 加 tzdata）或换台 Win 重试。"
+            )
 
         # 全部字段防御性归一：None → 默认值 / 空字符串
         raw = {
