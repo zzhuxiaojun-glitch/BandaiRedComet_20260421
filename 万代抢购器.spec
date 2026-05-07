@@ -55,7 +55,7 @@ a = Analysis(
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["scripts/pyi_rth_pythonnet.py"],
     excludes=[
         # 不需要的大依赖排除，减小体积
         "tkinter",

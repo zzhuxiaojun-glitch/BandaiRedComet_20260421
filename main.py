@@ -9,6 +9,12 @@
   - 历史 DB 存到 %APPDATA%/BandaiSniper/history.db
 """
 from __future__ import annotations
+import os
+# 必须在 import webview / pythonnet 之前设置：
+# pythonnet 3.x 默认尝试 coreclr (.NET 5+)，朋友 Win11 没装就崩。
+# netfx = .NET Framework 4.x，Win10/11 系统内置必有，最稳。
+os.environ.setdefault("PYTHONNET_RUNTIME", "netfx")
+
 import sys
 from pathlib import Path
 
